@@ -1,0 +1,25 @@
+{
+	"name": "metro-status-bot",
+	"version": "0.0.1",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"start": "tsx src/bot.ts",
+		"build": "tsc"
+	},
+	"dependencies": {
+		"discord.js": "^14.17.3",
+		"dotenv": "^16.4.7",
+		"metro-api-client": "link:C:/Users/hoppe/AppData/Local/pnpm/global/5/node_modules/metro-api-client"
+	},
+	"devDependencies": {
+		"tslib": "^2.8.1",
+		"tsx": "^4.19.2",
+		"typescript": "^5.7.3"
+	},
+	"pnpm": {
+		"overrides": {
+			"metro-api-client": "link:C:/Users/hoppe/AppData/Local/pnpm/global/5/node_modules/metro-api-client"
+		}
+	}
+}

@@ -1,6 +1,6 @@
 import {AutocompleteFocusedOption, ButtonInteraction, CommandInteraction} from "discord.js";
 import {alertSubscriptions, proxy, trainEmbed} from "../bot";
-import {FullTrainResponse} from "../../../metro-api-client/src";
+import {FullTrainResponse} from "metro-api-client/src";
 import {lastHeartbeat, lastHistoryEntries} from "../cache";
 import {getTimetabledTrains} from "../timetable";
 

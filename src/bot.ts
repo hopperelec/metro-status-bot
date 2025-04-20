@@ -98,7 +98,7 @@ function prevTrainStatusEmbed(train: TrainEmbedData) {
 }
 
 function listTrns(trns: Set<string>) {
-    return `T${Array.from(trns).join(", T")}`;
+    return `T${Array.from(trns).sort().join(", T")}`;
 }
 
 client.once(Events.ClientReady, async () => {

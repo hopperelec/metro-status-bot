@@ -1,4 +1,4 @@
-import {DEFAULT_MISSING_THRESHOLD, MULTIPLE_TRAINS_THRESHOLD, STREAM_RETRY_TIMEOUT} from "./constants";
+import {DEFAULT_MISSING_THRESHOLD, MULTIPLE_TRAINS_THRESHOLD} from "./constants";
 import {
     alertNowActive,
     alertSubscriptions,
@@ -473,17 +473,53 @@ async function onNewHistory(payload: FullNewHistoryPayload) {
     await updateActivity(Object.keys(lastHistoryEntries).length);
 }
 
-export async function startMonitoring() {
+async function _refreshCache() {
     await refreshCache(proxy);
     for (const stationCode of Object.keys(apiConstants.STATION_CODES)) {
         seenStationCodes.add(stationCode);
+        // TODO: Announce unrecognised stations from the times API
+    }
+}
+
+export async function startMonitoring() {
+    await _refreshCache();
+    console.log("Connecting to stream...");
+    let connectedOnce = false;
+    let currentlyConnected = false;
+    async function setConnected() {
+        if (currentlyConnected) return;
+        console.log("Successfully connected to stream!");
+        currentlyConnected = true;
+        if (connectedOnce) {
+            await _refreshCache();
+        } else {
+            connectedOnce = true;
+        }
     }
     proxy.stream({
-        onNewHistory,
-        onHeartbeatError: announceHeartbeatError,
-        onHeartbeatWarning: announceHeartbeatWarning,
+        async onNewHistory(payload) {
+            await setConnected();
+            await onNewHistory(payload as FullNewHistoryPayload);
+        },
+        async onHeartbeatError(payload) {
+            await setConnected();
+            await announceHeartbeatError(payload);
+        },
+        async onHeartbeatWarning(payload) {
+            await setConnected();
+            await announceHeartbeatWarning(payload);
+        },
+        onConnect() {
+            // This gets called if any response is received, even if it's an error page,
+            // so wait until some valid data is received before setting currentlyConnected
+        },
         onDisconnect() {
-            setTimeout(startMonitoring, STREAM_RETRY_TIMEOUT);
+            // This gets called repeatedly if an error page is received,
+            // so only log it if we were definitely connected previously
+            if (currentlyConnected) {
+                currentlyConnected = false;
+                console.log("Stream disconnected, trying to reconnect...");
+            }
         }
     })
 }

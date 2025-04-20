@@ -18,6 +18,7 @@ export function setLastHeartbeat(date: Date) {
 }
 
 export async function refreshCache(proxy: MetroApiClient) {
+    console.log("Refreshing cache...");
     apiConstants = await proxy.getConstants();
 
     // For the bot, we assume that the timetable is the same for all weekdays.

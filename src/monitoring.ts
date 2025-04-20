@@ -461,7 +461,10 @@ async function onNewHistory(payload: FullNewHistoryPayload) {
     }
     await checkMissingTrains();
 
-    await updateActivity(Object.keys(lastHistoryEntries).length);
+    const numberOfCurrentlyActiveTrains = Object.keys(lastHistoryEntries).length;
+    if (numberOfCurrentlyActiveTrains !== numberOfPreviouslyActiveTrains) {
+        await updateActivity(numberOfCurrentlyActiveTrains);
+    }
 }
 
 async function _refreshCache() {

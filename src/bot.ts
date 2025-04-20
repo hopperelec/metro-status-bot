@@ -159,33 +159,6 @@ export async function announceHeartbeatWarning(payload: HeartbeatWarningPayload)
     });
 }
 
-// Both APIs
-
-export async function announceTrainInTimesButNotStatuses(train: TrainEmbedData) {
-    await mainChannel.send({
-        content: `🤔 Train T${train.trn} is showing in the times API but not the train statuses API.`,
-        embeds: [trainEmbed(train)]
-    });
-}
-
-export async function announceTrainInStatusesButNotTimes(train: TrainEmbedData) {
-    // I have a feeling this will be too common,
-    // since it can make sense for a train to exist but not be due at any stations,
-    // such as when it's ending its journey.
-    // But there's only one way to truly find out!
-    await mainChannel.send({
-        content: `🤔 Train T${train.trn} is showing in the train statuses API but not the times API.`,
-        embeds: [trainEmbed(train)]
-    });
-}
-
-export async function announceAPIsDisagree(train: TrainEmbedData) {
-    await mainChannel.send({
-        content: `🤔 Train T${train.trn} is showing different last seen data in the times and train statuses APIs.`,
-        embeds: [trainEmbed(train)]
-    });
-}
-
 // Either API
 
 export async function announceTrainOnWrongDay(train: TrainEmbedData) {

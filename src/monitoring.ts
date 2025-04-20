@@ -6,14 +6,11 @@ import {
     announceReappearedTrain,
     announceTrainOnWrongDayDisappeared,
     updateActivity,
-    announceTrainInStatusesButNotTimes,
     announceUnparseableLastSeen,
-    announceAPIsDisagree,
     announceTrainAtStJamesP2,
     announceTrainAtUnrecognisedPlatform,
     announceTrainAtUnrecognisedStation,
     announceUnrecognisedDestination,
-    announceTrainInTimesButNotStatuses,
     announceTrainOnWrongDay,
     announceTrainDuringNightHours,
     TrainEmbedData,
@@ -71,40 +68,40 @@ const missingTrains = new Map<string, {
 const seenStationCodes = new Set<string>();
 
 let embedDatas: Record<string, TrainEmbedData> = {};
-async function getFullEmbedData(trn: string, date: Date, curr: ActiveHistoryStatus) {
+async function getFullEmbedData({ trn, curr }: TrainCheckData): Promise<TrainEmbedData> {
     // So that `nextStations` is only fetched once if needed
     let embedData = embedDatas[trn];
-    if (!embedData) {
-        let fullStatus: CollatedTrain;
-        if (curr.timesAPI) {
-            // ActiveHistoryStatus is missing `nextStations`, so we need to fetch it
-            const response = await proxy.getTrain(trn, {
-                props: ["status.timesAPI.nextStations"],
-            }) as {
-                status: {
-                    timesAPI: {
-                        nextPlatforms: TimesApiData["nextPlatforms"]
-                    }
-                }
-            };
-            fullStatus = {
-                ...curr,
+    if (embedData) return embedData;
+
+    let fullStatus: CollatedTrain;
+    if (curr.status.timesAPI) {
+        // ActiveHistoryStatus is missing `nextStations`, so we need to fetch it
+        const response = await proxy.getTrain(trn, {
+            props: ["status.timesAPI.nextStations"],
+        }) as {
+            status: {
                 timesAPI: {
-                    ...curr.timesAPI,
-                    ...response.status.timesAPI,
-                },
-            };
-        } else {
-            // Nothing to add
-            fullStatus = curr as CollatedTrain;
-        }
-        embedData = {
-            trn,
-            date,
-            status: fullStatus,
-        }
-        embedDatas[trn] = embedData
+                    nextPlatforms: TimesApiData["nextPlatforms"]
+                }
+            }
+        };
+        fullStatus = {
+            ...curr,
+            timesAPI: {
+                ...curr.status.timesAPI,
+                ...response.status.timesAPI,
+            },
+        };
+    } else {
+        // Nothing to add
+        fullStatus = curr.status as CollatedTrain;
     }
+    embedData = {
+        trn,
+        date: curr.date,
+        status: fullStatus,
+    }
+    embedDatas[trn] = embedData
     return embedData;
 }
 
@@ -150,9 +147,11 @@ function checkPlatform(
 
 // Checks which depend on the train statuses API, but don't depend on the times API
 async function trainStatusesChecks(
-    { trn, curr, prev }: TrainCheckData<{ trainStatusesAPI: TrainStatusesApiData }>,
+    checkData: TrainCheckData<{ trainStatusesAPI: TrainStatusesApiData }>,
     parsedLastSeen?: ParsedLastSeen
 ) {
+    // TODO: Do these checks really need to be exclusive to the train statuses API?
+    const { trn, curr, prev } = checkData;
     const prevTrainStatus = prev?.status.trainStatusesAPI;
     const currTrainStatus = curr.status.trainStatusesAPI;
     const lastSeenChanged = !prevTrainStatus || currTrainStatus.lastSeen !== prevTrainStatus?.lastSeen;
@@ -161,7 +160,7 @@ async function trainStatusesChecks(
         !getStationCode(currTrainStatus.destination) &&
         (!prev || currTrainStatus.destination !== prevTrainStatus?.destination)
     ) await announceUnrecognisedDestination(
-        await getFullEmbedData(trn, curr.date, curr.status),
+        await getFullEmbedData(checkData),
         { trn, ...prev }
     );
 
@@ -171,74 +170,71 @@ async function trainStatusesChecks(
                 !prevTrainStatus || parsedLastSeen.station !== parseLastSeen(prevTrainStatus.lastSeen).station
             )
         ) await announceTrainAtUnrecognisedStation(
-            await getFullEmbedData(trn, curr.date, curr.status),
+            await getFullEmbedData(checkData),
             { trn, ...prev },
             parsedLastSeen.station
         );
     } else if (lastSeenChanged) {
         await announceUnparseableLastSeen(
-            await getFullEmbedData(trn, curr.date, curr.status)
+            await getFullEmbedData(checkData)
         );
     }
 }
 
 // Checks which depend on both APIs
 async function bothAPIsChecks(
-    { trn, curr, prev }: TrainCheckData<{ timesAPI: TimesApiData, trainStatusesAPI: TrainStatusesApiData }>,
+    checkData: TrainCheckData<{ timesAPI: TimesApiData, trainStatusesAPI: TrainStatusesApiData }>,
     parsedLastSeen?: ParsedLastSeen
 ) {
+    // Currently, these checks are only about the last seen location
     if (!parsedLastSeen) return;
     const stationCode = getStationCode(parsedLastSeen.station);
     if (!stationCode) return;
 
-    const lastSeenChanged = !prev ||
-        curr.status.trainStatusesAPI.lastSeen !== prev.status.trainStatusesAPI?.lastSeen;
-    const equalLocation = (
-        parsedLastSeen.station === curr.status.timesAPI.lastEvent.station &&
-        parsedLastSeen.platform === curr.status.timesAPI.lastEvent.platform
-    );
+    const { trn, curr, prev } = checkData;
 
+    // If each API is reporting a different last seen location, don't trust it
     if (
-        (
-            // The APIs disagree on something
-            !equalLocation ||
-            parsedLastSeen.hours !== curr.status.timesAPI.lastEvent.time.getHours() ||
-            parsedLastSeen.minutes !== curr.status.timesAPI.lastEvent.time.getMinutes() ||
-            parsedLastSeen.state.toUpperCase().replaceAll(" ","_") !== curr.status.timesAPI.lastEvent.type
-        ) && (
-            // Something changed
-            lastSeenChanged ||
-            curr.status.timesAPI.lastEvent.time.getTime() !== prev.status.timesAPI?.lastEvent.time.getTime() ||
-            curr.status.timesAPI.lastEvent.type !== prev.status.timesAPI?.lastEvent.type
-        )
-    ) await announceAPIsDisagree(
-        await getFullEmbedData(trn, curr.date, curr.status)
-    );
+        parsedLastSeen.station !== curr.status.timesAPI.lastEvent.station ||
+        parsedLastSeen.platform !== curr.status.timesAPI.lastEvent.platform
+    ) return;
 
-    if (equalLocation && lastSeenChanged) {
-        const platformCheck = checkPlatform(
-            trn,
-            stationCode,
-            parsedLastSeen.platform,
-            `${parsedLastSeen.hours}${parsedLastSeen.minutes}`
+    // If the last seen location has not changed, don't repeat announcements
+    if (
+        prev &&
+        parsedLastSeen.station === prev.status.timesAPI.lastEvent.station &&
+        parsedLastSeen.platform === prev.status.timesAPI.lastEvent.platform
+    ) return;
+
+    const platformCheck = checkPlatform(
+        trn,
+        stationCode,
+        parsedLastSeen.platform,
+        `${parsedLastSeen.hours}${parsedLastSeen.minutes}`
+    );
+    if (platformCheck === "unrecognised") {
+        await announceTrainAtUnrecognisedPlatform(
+            await getFullEmbedData(checkData)
         );
-        if (platformCheck === "unrecognised") {
-            await announceTrainAtUnrecognisedPlatform(
-                await getFullEmbedData(trn, curr.date, curr.status)
-            );
-        } else if (platformCheck === "st-james-p2") {
-            await announceTrainAtStJamesP2(
-                await getFullEmbedData(trn, curr.date, curr.status)
-            );
-        }
+    } else if (platformCheck === "st-james-p2") {
+        await announceTrainAtStJamesP2(
+            await getFullEmbedData(checkData)
+        );
     }
 }
 
 // Checks which can be done with either API
 async function eitherAPIsChecks(
-    { trn, curr, prev }: TrainCheckData,
+    checkData: TrainCheckData,
     parsedLastSeen?: ParsedLastSeen
 ) {
+    // These checks are about a train being present
+    // (e.g.: on the wrong day or during night hours),
+    // regardless of its current status
+
+    const { trn, curr, prev } = checkData;
+
+    // Don't repeat these announcements unless the train's current destination changes
     if (
         prev?.status &&
         curr.status.trainStatusesAPI?.destination === prev.status.trainStatusesAPI?.destination &&
@@ -261,7 +257,7 @@ async function eitherAPIsChecks(
     if (dateInTimes) {
         timetableInTimes = timetable[getDayType(dateInTimes)][trn];
         if (!timetableInTimes) {
-            await announceTrainOnWrongDay(await getFullEmbedData(trn, curr.date, curr.status));
+            await announceTrainOnWrongDay(await getFullEmbedData(checkData));
             return;
         }
     }
@@ -270,7 +266,7 @@ async function eitherAPIsChecks(
     if (dateInStatuses) {
         timetableInStatuses = timetable[getDayType(dateInStatuses)][trn];
         if (!timetableInStatuses) {
-            await announceTrainOnWrongDay(await getFullEmbedData(trn, curr.date, curr.status));
+            await announceTrainOnWrongDay(await getFullEmbedData(checkData));
             return;
         }
     }
@@ -279,7 +275,7 @@ async function eitherAPIsChecks(
         const expectedStateInTimes =
             getExpectedTrainState(timetableInTimes, timeDateToStr(dateInTimes)).state;
         if (expectedStateInTimes === "not-started" || expectedStateInTimes === "ended") {
-            await announceTrainDuringNightHours(await getFullEmbedData(trn, curr.date, curr.status))
+            await announceTrainDuringNightHours(await getFullEmbedData(checkData))
             return;
         }
     }
@@ -288,38 +284,33 @@ async function eitherAPIsChecks(
         const expectedStateInStatuses =
             getExpectedTrainState(timetableInStatuses, timeNumbersToStr(parsedLastSeen.hours, parsedLastSeen.minutes)).state;
         if (expectedStateInStatuses === "not-started" || expectedStateInStatuses === "ended") {
-            await announceTrainDuringNightHours(await getFullEmbedData(trn, curr.date, curr.status));
+            await announceTrainDuringNightHours(await getFullEmbedData(checkData));
             return;
         }
     }
 }
 
 async function checkActiveTrain(checkData: TrainCheckData) {
-    const { trn, curr, prev } = checkData;
-    if (curr.status.trainStatusesAPI) {
-        const parsedLastSeen = parseLastSeen(curr.status.trainStatusesAPI.lastSeen);
+    const status = checkData.curr.status;
+    if (status.trainStatusesAPI) {
+        const parsedLastSeen = parseLastSeen(status.trainStatusesAPI.lastSeen);
         await eitherAPIsChecks(checkData, parsedLastSeen);
         await trainStatusesChecks(
             checkData as TrainCheckData<{ trainStatusesAPI: TrainStatusesApiData }>,
             parsedLastSeen);
-        if (curr.status.timesAPI) {
+        if (status.timesAPI) {
             await bothAPIsChecks(
                 checkData as TrainCheckData<{ timesAPI: TimesApiData, trainStatusesAPI: TrainStatusesApiData }>,
                 parsedLastSeen
             );
-        } else if (!prev || prev.status.timesAPI) {
-            await announceTrainInStatusesButNotTimes(await getFullEmbedData(trn, curr.date, curr.status));
         }
-    } else if (curr.status.timesAPI) {
+    } else if (status.timesAPI) {
         await eitherAPIsChecks(checkData);
-        if (!prev || prev.status.trainStatusesAPI) {
-            await announceTrainInTimesButNotStatuses(await getFullEmbedData(trn, curr.date, curr.status));
-        }
     }
 
     for (const subscription of alertSubscriptions) {
         const data = lastHistoryEntries[subscription.trn];
-        if (data) await alertNowActive(subscription, await getFullEmbedData(trn, curr.date, curr.status));
+        if (data) await alertNowActive(subscription, await getFullEmbedData(checkData));
     }
 }
 

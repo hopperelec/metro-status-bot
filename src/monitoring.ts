@@ -447,7 +447,6 @@ async function onNewHistory(payload: FullNewHistoryPayload) {
             let prev = lastHistoryEntries[trn];
             if (!prev) {
                 // This can occur if the bot was restarted between the previous entry and it going missing
-                // TODO: Fix this, `response.extract[0]` is undefined and I'm not sure why
                 const response = await proxy.getHistory(trn, {
                     time: { to: payload.date },
                     limit: 1,

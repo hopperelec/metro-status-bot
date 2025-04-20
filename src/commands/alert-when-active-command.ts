@@ -7,7 +7,7 @@ import {getTimetabledTrains} from "../timetable";
 export default async function command(interaction: CommandInteraction) {
     const trn = interaction.options.get('trn').value as string;
     const train = await proxy.getTrain(trn, { props: ["active"] }) as FullTrainResponse;
-    if (train.active) {
+    if (train.status) {
         await interaction.reply({
             content: `Train T${trn} is already active`,
             embeds: [trainEmbed({ trn, date: train.lastChanged, status: train.status })]

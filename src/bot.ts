@@ -58,20 +58,18 @@ export function trainEmbed(train: TrainEmbedData) {
         embed.addFields(
             {
                 name: "⌛ Last seen",
-                value: `${data.lastEvent.type.replaceAll("_", " ")} ${data.lastEvent.station} Platform ${data.lastEvent.platform} at ${data.lastEvent.time.toLocaleTimeString('en-GB')}`
+                value: `${data.lastEvent.type.replaceAll("_", " ")} ${data.lastEvent.location} at ${data.lastEvent.time.toLocaleTimeString('en-GB')}`
             },
             {
                 name: "⌛ Planned destinations",
-                value: data.plannedDestinations.map(dest => `${dest.name} from ${apiConstants.STATION_CODES[dest.from.station]} P${dest.from.platform} at ${dest.from.time.toLocaleTimeString('en-GB')}`).join("\n")
+                value: data.plannedDestinations.map(dest => `${dest.name} from ${renderPlatformCode(dest.from.platformCode)} at ${dest.from.time.toLocaleTimeString('en-GB')}`).join("\n")
             }
         );
         if ('nextPlatforms' in data) {
             embed.addFields(
                 {
                     name: "⌛ Next Platforms",
-                    value: data.nextPlatforms.map(
-                        (nextPlatform) => `${apiConstants.STATION_CODES[nextPlatform.station]} P${nextPlatform.platform}`
-                    ).join(", ")
+                    value: data.nextPlatforms.map(nextPlatform => renderPlatformCode(nextPlatform.code)).join(", ")
                 }
             );
         }
@@ -95,6 +93,14 @@ export function trainEmbed(train: TrainEmbedData) {
 
 function prevTrainStatusEmbed(train: TrainEmbedData) {
     return trainEmbed(train).setTitle(`T${train.trn} (previous status)`)
+}
+
+const PLATFORM_CODE_REGEX = /^(?<station>[A-Z]{3});(?<platform>[1-4])$/;
+
+function renderPlatformCode(code: string) {
+    const parsed = code.match(PLATFORM_CODE_REGEX);
+    if (!parsed?.groups) return code;
+    return `${apiConstants.STATION_CODES[parsed.groups.station]} P${parsed.groups.platform}`;
 }
 
 function listTrns(trns: Set<string>) {

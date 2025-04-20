@@ -6,6 +6,10 @@ import {
 import {DayType, getDayType} from "./timetable";
 import {updateActivity} from "./bot";
 
+const EXAMPLE_WEEKDAY = new Date(2024, 0, 1);
+const EXAMPLE_SATURDAY = new Date(2024, 0, 6);
+const EXAMPLE_SUNDAY = new Date(2024, 0, 7);
+
 export let apiConstants: ApiConstants;
 export let timetable: { [key in DayType]: Record<string, FullTimetableResponseTable<true>> };
 export let timetabledTrns: Set<string> = new Set();
@@ -21,12 +25,13 @@ export async function refreshCache(proxy: MetroApiClient) {
     console.log("Refreshing cache...");
     apiConstants = await proxy.getConstants();
 
-    // For the bot, we assume that the timetable is the same for all weekdays.
-    // The proxy does not enforce this but, at least right now, it is true in the real world.
+    // The proxy does not enforce this, since it might change in the future,
+    // but right now the proxy uses the same timetable for all weekdays, saturdays and sundays.
+    // So, for simplicity, the bot will assume that is the case.
     timetable = {
-        weekday: await proxy.getTimetable({ day: 0 }) as Record<string, FullTimetableResponseTable<true>>,
-        saturday: await proxy.getTimetable({ day: 5 }) as Record<string, FullTimetableResponseTable<true>>,
-        sunday: await proxy.getTimetable({ day: 6 }) as Record<string, FullTimetableResponseTable<true>>
+        weekday: await proxy.getTimetable({ date: EXAMPLE_WEEKDAY }) as Record<string, FullTimetableResponseTable<true>>,
+        saturday: await proxy.getTimetable({ date: EXAMPLE_SATURDAY }) as Record<string, FullTimetableResponseTable<true>>,
+        sunday: await proxy.getTimetable({ date: EXAMPLE_SUNDAY }) as Record<string, FullTimetableResponseTable<true>>
     };
     timetabledTrns = new Set(Object.values(timetable).flatMap(dayTimetable => Object.keys(dayTimetable)));
 

@@ -1,6 +1,6 @@
 import {ActionRowBuilder, AutocompleteFocusedOption, ButtonBuilder, ButtonStyle, CommandInteraction} from "discord.js";
 import {getDayTimetable, getStationCode, lastHistoryEntries} from "../cache";
-import {FullTrainResponse, parseLastSeen} from "metro-api-client";
+import {FullTrainResponse, parseLastSeen, parseTimesAPILocation} from "metro-api-client";
 import {proxy, trainEmbed} from "../bot";
 import {
     calculateDifferenceToTimetable, differenceToTimetableToString,
@@ -23,7 +23,7 @@ export default async function command(interaction: CommandInteraction) {
 
     let lines: string[] = [];
 
-    if (train.active) {
+    if (train.status) {
         lines.push(`This train is currently active, and it's current status is shown below.`);
     } else {
         lines.push(`No train with TRN ${trn} is currently running.`);
@@ -36,20 +36,24 @@ export default async function command(interaction: CommandInteraction) {
         lines.push("This train is not timetabled to run today.");
     }
 
-    if (train.active) {
+    if (train.status) {
         if (trainTimetable) {
             const currentTime = timeDateToStr(new Date());
             let differenceAccordingToTimes: number = undefined;
-            if (train.status.timesAPI) {
+            timesAPI: if (train.status.timesAPI) {
+                const parsedLocation = parseTimesAPILocation(train.status.timesAPI.lastEvent.location);
+                if (!parsedLocation) break timesAPI;
                 differenceAccordingToTimes = calculateDifferenceToTimetable(
                     trainTimetable,
                     currentTime,
-                    getStationCode(train.status.timesAPI.lastEvent.station),
+                    getStationCode(parsedLocation.station),
                     getStationCode(train.status.timesAPI.plannedDestinations[0].name)
                 );
             }
             let differenceAccordingToStatuses: number = undefined;
-            if (train.status.trainStatusesAPI) {
+            trainStatusesAPI: if (train.status.trainStatusesAPI) {
+                const parsedLastSeen = parseLastSeen(train.status.trainStatusesAPI.lastSeen);
+                if (!parsedLastSeen) break trainStatusesAPI;
                 differenceAccordingToStatuses = calculateDifferenceToTimetable(
                     trainTimetable,
                     currentTime,

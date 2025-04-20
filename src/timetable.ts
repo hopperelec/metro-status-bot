@@ -1,10 +1,6 @@
 import {apiConstants, compareTimes, getDayTimetable} from "./cache";
-import {ExpectedTrainLocation, TrainTimetable} from "metro-api-client";
+import {ExpectedTrainState, TrainTimetable} from "metro-api-client";
 import {TRAIN_DIRECTIONS} from "./constants";
-
-export type ExpectedTrainState = ExpectedTrainLocation & {
-    state: 'not-started' | 'starting' | 'active' | 'ending' | 'ended' | 'nis'
-}
 
 export type DayType =  'weekday' | 'saturday' | 'sunday';
 
@@ -78,9 +74,8 @@ export function getFlatTimetableForTRN(trainTimetable: TrainTimetable, includeFo
 }
 
 export function getExpectedTrainState(trainTimetable: TrainTimetable, time: string): ExpectedTrainState {
-    // The proxy can tell us the expected train location using the `/train/:trn` endpoint.
-    // However, we are already caching the full timetable locally, and
-    // we also want the state which the proxy does not identify for us.
+    // The proxy tells us the expected train state in the `/train/:trn` endpoint.
+    // However, we are already caching the full timetable locally.
     // So, we will figure it out locally.
     if (compareTimes(time, trainTimetable.departure.time) < 0) return {
         station1: trainTimetable.departure.place,

@@ -33,7 +33,7 @@ import {
     ActiveHistoryEntry,
     ActiveHistoryStatus,
     CollatedTrain, FullNewHistoryPayload, FullTimetableResponseTable,
-    ParsedLastSeen, parseLastSeen, PlatformNumber, TimesApiData,
+    ParsedLastSeen, ParsedTimesAPILocation, parseLastSeen, parseTimesAPILocation, PlatformNumber, TimesApiData,
     TrainStatusesApiData
 } from "metro-api-client";
 import {
@@ -184,27 +184,24 @@ async function trainStatusesChecks(
 // Checks which depend on both APIs
 async function bothAPIsChecks(
     checkData: TrainCheckData<{ timesAPI: TimesApiData, trainStatusesAPI: TrainStatusesApiData }>,
-    parsedLastSeen?: ParsedLastSeen
+    parsedLastSeen?: ParsedLastSeen,
+    timesAPILocation?: ParsedTimesAPILocation
 ) {
     // Currently, these checks are only about the last seen location
     if (!parsedLastSeen) return;
     const stationCode = getStationCode(parsedLastSeen.station);
     if (!stationCode) return;
 
-    const { trn, curr, prev } = checkData;
-
     // If each API is reporting a different last seen location, don't trust it
     if (
-        parsedLastSeen.station !== curr.status.timesAPI.lastEvent.station ||
-        parsedLastSeen.platform !== curr.status.timesAPI.lastEvent.platform
+        parsedLastSeen.station !== timesAPILocation.station ||
+        parsedLastSeen.platform !== timesAPILocation.platform
     ) return;
 
+    const { trn, curr, prev } = checkData;
+
     // If the last seen location has not changed, don't repeat announcements
-    if (
-        prev &&
-        parsedLastSeen.station === prev.status.timesAPI.lastEvent.station &&
-        parsedLastSeen.platform === prev.status.timesAPI.lastEvent.platform
-    ) return;
+    if (prev && curr.status.timesAPI.lastEvent.location === prev.status.timesAPI.lastEvent.location) return;
 
     const platformCheck = checkPlatform(
         trn,
@@ -299,9 +296,11 @@ async function checkActiveTrain(checkData: TrainCheckData) {
             checkData as TrainCheckData<{ trainStatusesAPI: TrainStatusesApiData }>,
             parsedLastSeen);
         if (status.timesAPI) {
+            const timesAPILocation = parseTimesAPILocation(status.timesAPI.lastEvent.location);
             await bothAPIsChecks(
                 checkData as TrainCheckData<{ timesAPI: TimesApiData, trainStatusesAPI: TrainStatusesApiData }>,
-                parsedLastSeen
+                parsedLastSeen,
+                timesAPILocation
             );
         }
     } else if (status.timesAPI) {

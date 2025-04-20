@@ -1,5 +1,5 @@
 import {AutocompleteFocusedOption, CommandInteraction, EmbedBuilder} from "discord.js";
-import {TrainDirection} from "metro-api-client/src";
+import {TrainDirection} from "metro-api-client";
 import {DayType, getDayType} from "../timetable";
 import {apiConstants, compareTimes, timetable, timetabledTrns} from "../cache";
 import {TRAIN_DIRECTIONS} from "../constants";

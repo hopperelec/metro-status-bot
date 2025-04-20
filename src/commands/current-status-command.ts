@@ -1,6 +1,6 @@
 import {ActionRowBuilder, AutocompleteFocusedOption, ButtonBuilder, ButtonStyle, CommandInteraction} from "discord.js";
 import {getDayTimetable, getStationCode, lastHistoryEntries} from "../cache";
-import {FullTrainResponse, parseLastSeen} from "metro-api-client/src";
+import {FullTrainResponse, parseLastSeen} from "metro-api-client";
 import {proxy, trainEmbed} from "../bot";
 import {
     calculateDifferenceToTimetable, differenceToTimetableToString,

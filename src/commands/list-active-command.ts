@@ -1,6 +1,6 @@
 import {CommandInteraction, EmbedBuilder} from "discord.js";
 import {proxy} from "../bot";
-import {FullTrainsResponse} from "metro-api-client/src";
+import {FullTrainsResponse} from "metro-api-client";
 import {getTimetabledTrains} from "../timetable";
 
 function listTrains(trains: string[]) {

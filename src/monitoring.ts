@@ -402,8 +402,14 @@ async function onNewHistory(payload: FullNewHistoryPayload) {
 
     const numberOfPreviouslyActiveTrains = Object.keys(lastHistoryEntries).length;
     const updatedActiveTrains: Record<string, ActiveHistoryStatus> = {};
-    const disappearedTrains = new Set<string>();
-    const reappearedTrains = new Set<string>();
+    const disappearedTrains: {
+        trn: string,
+        prev: Omit<ActiveHistoryEntry, "active">,
+    }[] = []
+    const reappearedTrains: {
+        trn: string,
+        curr: Omit<ActiveHistoryEntry, "active">,
+    }[] = [];
     embedDatas = {};
     for (const [trn, trainData] of Object.entries(payload.trains)) {
         const historyEntry = {date: payload.date, ...trainData};
@@ -423,24 +429,25 @@ async function onNewHistory(payload: FullNewHistoryPayload) {
             trainsWithHistory.add(trn);
             updatedActiveTrains[trn] = activeHistoryStatus;
             if (missingTrains.has(trn)) {
-                reappearedTrains.add(trn);
+                reappearedTrains.push({ trn, curr: activeHistoryEntry });
             }
         } else {
+            disappearedTrains.push({ trn, prev: lastHistoryEntries[trn] });
             delete lastHistoryEntries[trn];
-            disappearedTrains.add(trn);
         }
     }
 
-    if (disappearedTrains.size >= MULTIPLE_TRAINS_THRESHOLD) {
+    if (disappearedTrains.length >= MULTIPLE_TRAINS_THRESHOLD) {
         await handleMultipleDisappearedTrains(
-            disappearedTrains,
-            disappearedTrains.size === numberOfPreviouslyActiveTrains
+            new Set(disappearedTrains.map(({ trn }) => trn)),
+            disappearedTrains.length === numberOfPreviouslyActiveTrains
         );
     } else {
-        for (const trn of disappearedTrains) {
+        for (const { trn } of disappearedTrains) {
             let prev = lastHistoryEntries[trn];
             if (!prev) {
                 // This can occur if the bot was restarted between the previous entry and it going missing
+                // TODO: Fix this, `response.extract[0]` is undefined and I'm not sure why
                 const response = await proxy.getHistory(trn, {
                     time: { to: payload.date },
                     limit: 1,
@@ -453,11 +460,13 @@ async function onNewHistory(payload: FullNewHistoryPayload) {
             await handleDisappearedTrain(trn, prev);
         }
     }
-    if (reappearedTrains.size >= MULTIPLE_TRAINS_THRESHOLD) {
-        await handleMultipleReappearedTrains(reappearedTrains);
+    if (reappearedTrains.length >= MULTIPLE_TRAINS_THRESHOLD) {
+        await handleMultipleReappearedTrains(
+            new Set(reappearedTrains.map(({ trn }) => trn))
+        );
     } else {
-        for (const trn of reappearedTrains) {
-            await handleReappearedTrain(trn, { date: payload.date, status: updatedActiveTrains[trn] });
+        for (const { trn, curr } of reappearedTrains) {
+            await handleReappearedTrain(trn, curr);
         }
     }
     await checkMissingTrains();

@@ -69,15 +69,15 @@ const seenStationCodes = new Set<string>();
 
 let embedDatas: Record<string, TrainEmbedData> = {};
 async function getFullEmbedData({ trn, curr }: TrainCheckData): Promise<TrainEmbedData> {
-    // So that `nextStations` is only fetched once if needed
+    // So that `nextPlatforms` is only fetched once if needed
     let embedData = embedDatas[trn];
     if (embedData) return embedData;
 
     let fullStatus: CollatedTrain;
     if (curr.status.timesAPI) {
-        // ActiveHistoryStatus is missing `nextStations`, so we need to fetch it
+        // ActiveHistoryStatus is missing `nextPlatforms`, so we need to fetch it
         const response = await proxy.getTrain(trn, {
-            props: ["status.timesAPI.nextStations"],
+            props: ["status.timesAPI.nextPlatforms"],
         }) as {
             status: {
                 timesAPI: {

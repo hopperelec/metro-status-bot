@@ -227,7 +227,7 @@ function shouldAnnounceUnrecognisedStation(
     parsedLastSeen?: ParsedLastSeen,
     timesAPILocation?: ParsedTimesAPILocation
 ) {
-    if (parsedLastSeen.state !== timesAPILocation.station) return false;
+    if (parsedLastSeen?.station !== timesAPILocation?.station) return false;
     if (parsedLastSeen) {
         const prevStatus = prev?.status?.trainStatusesAPI;
         if (

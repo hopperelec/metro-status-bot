@@ -436,14 +436,6 @@ async function checkMissingTrains() {
     }
 }
 
-async function handleReappearedTrain(trn: string, curr: Omit<ActiveHistoryEntry, "active">) {
-    if (missingTrains.has(trn)) {
-        missingTrains.delete(trn);
-    } else {
-        await announceReappearedTrain({trn, ...curr});
-    }
-}
-
 async function handleMultipleReappearedTrains(trns: Set<string>) {
     for (const trn of trns) {
         missingTrains.delete(trn);
@@ -484,6 +476,7 @@ async function onNewHistory(payload: FullNewHistoryPayload) {
             trainsWithHistory.add(trn);
             updatedActiveTrains[trn] = activeHistoryStatus;
             if (missingTrains.has(trn)) {
+                missingTrains.delete(trn);
                 reappearedTrains.push({ trn, curr: activeHistoryEntry });
             }
         } else {
@@ -520,7 +513,7 @@ async function onNewHistory(payload: FullNewHistoryPayload) {
         );
     } else {
         for (const { trn, curr } of reappearedTrains) {
-            await handleReappearedTrain(trn, curr);
+            await announceReappearedTrain({trn, ...curr});
         }
     }
     await checkMissingTrains();

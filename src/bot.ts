@@ -189,6 +189,19 @@ export async function announceTrainDuringNightHours(train: TrainEmbedData) {
     });
 }
 
+export async function announceUnrecognisedDestinations(
+    currStatus: TrainEmbedData,
+    prevStatus: TrainEmbedData,
+    unrecognisedDestinations: string[]
+) {
+    // TODO: Special cases for "Gosforth Depot", "Not in service" and "Terminates"
+    // TODO: Note for yellow line trains heading to a blank station, which seems to usually mean "Bede"
+    await mainChannel.send({
+        content: `🤔 Train T${currStatus.trn} has ${unrecognisedDestinations.length} new unrecognised current and/or planned destination(s):\n${unrecognisedDestinations.join(", ")}`,
+        embeds: [trainEmbed(currStatus), prevTrainStatusEmbed(prevStatus)]
+    });
+}
+
 export async function announceTrainAtUnrecognisedStation(
     currStatus: TrainEmbedData,
     prevStatus: TrainEmbedData,
@@ -210,7 +223,16 @@ export async function announceTrainAtUnrecognisedPlatform(train: TrainEmbedData)
 
 export async function announceTrainAtStJamesP2(train: TrainEmbedData) {
     await mainChannel.send({
-        content: `🤔 Train T${train.trn} is at St James platform 2. This usually means there is a Not In Service train on platform 1.`,
+        content: `🤔 Train T${train.trn} is at St James platform 2. ` +
+            'This usually means it is ending service ' +
+            'or that there is a Not In Service train on platform 1.',
+        embeds: [trainEmbed(train)]
+    });
+}
+
+export async function announceTrainAtSouthShieldsP1(train: TrainEmbedData) {
+    await mainChannel.send({
+        content: `🤔 Train T${train.trn} is at South Shields platform 1.`,
         embeds: [trainEmbed(train)]
     });
 }
@@ -260,19 +282,6 @@ export async function alertNowActive(subscription: AlertSubscription, train: Tra
         embeds: [trainEmbed(train)]
     })
     alertSubscriptions.splice(alertSubscriptions.indexOf(subscription), 1);
-}
-
-export async function announceUnrecognisedDestinations(
-    currStatus: TrainEmbedData,
-    prevStatus: TrainEmbedData,
-    unrecognisedDestinations: string[]
-) {
-    // TODO: Special cases for "Gosforth Depot", "Not in service" and "Terminates"
-    // TODO: Note for yellow line trains heading to a blank station, which seems to usually mean "Bede"
-    await mainChannel.send({
-        content: `🤔 Train T${currStatus.trn} has ${unrecognisedDestinations.length} new unrecognised current and/or planned destination(s):\n${unrecognisedDestinations.join(", ")}`,
-        embeds: [trainEmbed(currStatus), prevTrainStatusEmbed(prevStatus)]
-    });
 }
 
 // Train statuses API

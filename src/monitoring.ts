@@ -18,7 +18,10 @@ import {
     announceAllTrainsDisappeared,
     announceMultipleDisappearedTrains,
     announceMultipleReappearedTrains,
-    announceUnparseableLastEventLocation, announceTrainAtStJamesP2, announceTrainAtUnrecognisedPlatform
+    announceUnparseableLastEventLocation,
+    announceTrainAtStJamesP2,
+    announceTrainAtUnrecognisedPlatform,
+    announceTrainAtSouthShieldsP1
 } from "./bot";
 import {
     apiConstants,
@@ -114,11 +117,11 @@ function checkPlatform(
     let recognised = true;
     switch (platform) {
         case 1:
-            // TODO: Special case for South Shields P1, since that does exist but is just strange
-            recognised = station !== "SSS" && station !== "SHL";
+            if (station === 'SSS') return 'sss-p1';
+            recognised = station !== "SHL";
             break;
         case 2:
-            if (station === "STJ") {
+            if (station === "SJM") {
                 const trainTimetable = getDayTimetable()[trn];
                 if (!trainTimetable) break;
                 const fullTimetable = getFlatTimetableForTRN(trainTimetable);
@@ -130,7 +133,7 @@ function checkPlatform(
                     trainTimetable.arrival.place === "St James Platform 2" &&
                     compareTimes(time, fullTimetable[fullTimetable.length - 1].time) >= 0
                 ) break;
-                return "st-james-p2";
+                return "sjm-p2";
             }
             break;
         case 3:
@@ -334,7 +337,9 @@ async function eitherAPIChecks(
         parsedLastSeen?.platform ?? timesAPILocation.platform,
         timeDateToStr(checkData.curr.date)
     );
-    if (platformCheck === "st-james-p2") {
+    if (platformCheck === "sss-p1") {
+        await announceTrainAtSouthShieldsP1(await getFullEmbedData(checkData));
+    } else if (platformCheck === "sjm-p2") {
         await announceTrainAtStJamesP2(await getFullEmbedData(checkData));
     } else if (platformCheck === "unrecognised") {
         await announceTrainAtUnrecognisedPlatform(await getFullEmbedData(checkData));

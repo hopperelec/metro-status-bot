@@ -117,7 +117,7 @@ function checkPlatform(
     switch (platform) {
         case 1:
             if (stationName === 'South Shields') return 'sss-p1';
-            if (stationName !== 'South Hylton') return 'unrecognised';
+            if (stationName === 'South Hylton') return 'unrecognised';
             return;
         case 2:
             if (stationName !== "St James") return;

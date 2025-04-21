@@ -268,7 +268,7 @@ function getUniqueDestinations(status?: ActiveHistoryStatus) {
 
 function getNewUnrecognisedDestinations({curr, prev}: TrainCheckData) {
     const currDestinations = getUniqueDestinations(curr.status);
-    const prevDestinations = getUniqueDestinations(prev.status);
+    const prevDestinations = getUniqueDestinations(prev?.status);
     const newUnrecognisedDestinations: string[] = []; // so that they stay in the same order
     for (const destination of currDestinations) {
         if (prevDestinations.has(destination)) continue;

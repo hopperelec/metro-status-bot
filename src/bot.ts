@@ -194,8 +194,6 @@ export async function announceTrainAtUnrecognisedStation(
     prevStatus: TrainEmbedData,
     station: string,
 ) {
-    // TODO: Special cases for "Gosforth Depot", "Not in service" and "Terminates"
-    // TODO: Note for yellow line trains heading to a blank station, which seems to usually mean "Bede"
     const middle = station === "" ? "a blank station" : `an unrecognised station "${station}"`;
     await mainChannel.send({
         content: `🤔 Train T${currStatus.trn} was last seen at ${middle}`,
@@ -264,24 +262,36 @@ export async function alertNowActive(subscription: AlertSubscription, train: Tra
     alertSubscriptions.splice(alertSubscriptions.indexOf(subscription), 1);
 }
 
-// Train statuses API
-
-export async function announceUnrecognisedDestination(
+export async function announceUnrecognisedDestinations(
     currStatus: TrainEmbedData,
-    prevStatus: TrainEmbedData
+    prevStatus: TrainEmbedData,
+    unrecognisedDestinations: string[]
 ) {
-    const middle = currStatus.status.trainStatusesAPI.destination === ""
-        ? "'s destination is blank"
-        : ` is heading to an unrecognised destination "${currStatus.status.trainStatusesAPI.destination}"`;
+    // TODO: Special cases for "Gosforth Depot", "Not in service" and "Terminates"
+    // TODO: Note for yellow line trains heading to a blank station, which seems to usually mean "Bede"
     await mainChannel.send({
-        content: `🤔 Train T${currStatus.trn}${middle}.`,
+        content: `🤔 Train T${currStatus.trn} has ${unrecognisedDestinations.length} new unrecognised current and/or planned destination(s):\n${unrecognisedDestinations.join(", ")}`,
         embeds: [trainEmbed(currStatus), prevTrainStatusEmbed(prevStatus)]
     });
 }
 
-export async function announceUnparseableLastSeen(train: TrainEmbedData) {
+// Train statuses API
+
+export async function announceUnparseableLastSeen(currStatus: TrainEmbedData) {
     await mainChannel.send({
-        content: `⚠️ Not able to parse the last seen message (from train statuses API) for train T${train.trn}.`,
-        embeds: [trainEmbed(train)]
+        content: `⚠️ Not able to parse the last seen message (from the train statuses API) for train T${currStatus.trn}.`,
+        embeds: [trainEmbed(currStatus)]
+    });
+}
+
+// Times API
+
+export async function announceUnparseableLastEventLocation(
+    currStatus: TrainEmbedData,
+    prevStatus: TrainEmbedData,
+) {
+    await mainChannel.send({
+        content: `⚠️ Not able to parse the last event location (from the times API) for train T${currStatus.trn}.`,
+        embeds: [trainEmbed(currStatus), prevTrainStatusEmbed(prevStatus)]
     });
 }

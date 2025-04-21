@@ -110,42 +110,38 @@ async function getFullEmbedData({ trn, curr }: TrainCheckData): Promise<TrainEmb
 // Doesn't announce on its own, in case I want to handle each API separately
 function checkPlatform(
     trn: string,
-    station: string,
+    stationName: string,
     platform: PlatformNumber,
     time: string
 ) {
-    let recognised = true;
     switch (platform) {
         case 1:
-            if (station === 'SSS') return 'sss-p1';
-            recognised = station !== "SHL";
-            break;
+            if (stationName === 'South Shields') return 'sss-p1';
+            if (stationName !== 'South Hylton') return 'unrecognised';
+            return;
         case 2:
-            if (station === "SJM") {
-                const trainTimetable = getDayTimetable()[trn];
-                if (!trainTimetable) break;
-                const fullTimetable = getFlatTimetableForTRN(trainTimetable);
-                if (
-                    trainTimetable.departure.place === "St James Platform 2" &&
-                    compareTimes(time, fullTimetable[0].time) <= 0
-                ) break;
-                if (
-                    trainTimetable.arrival.place === "St James Platform 2" &&
-                    compareTimes(time, fullTimetable[fullTimetable.length - 1].time) >= 0
-                ) break;
-                return "sjm-p2";
-            }
-            break;
+            if (stationName !== "St James") return;
+            const trainTimetable = getDayTimetable()[trn];
+            if (!trainTimetable) return;
+            const fullTimetable = getFlatTimetableForTRN(trainTimetable);
+            if (
+                trainTimetable.departure.place === "St James Platform 2" &&
+                compareTimes(time, fullTimetable[0].time) <= 0
+            ) return;
+            if (
+                trainTimetable.arrival.place === "St James Platform 2" &&
+                compareTimes(time, fullTimetable[fullTimetable.length - 1].time) >= 0
+            ) return;
+            return "sjm-p2";
         case 3:
-            recognised = ["MMT", "MTW", "MTE", "SUN"].includes(station);
-            break;
+            if (stationName === "Sunderland") return;
+            // fall-through
         case 4:
-            recognised = ["MMT", "MTW", "MTE"].includes(station);
-            break;
+            if (stationName === "Monument") return;
+            // fall-through
         default:
-            recognised = false;
+            return 'unrecognised';
     }
-    if (!recognised) return "unrecognised";
 }
 
 // Checks which depend on the times API, but don't depend on the statuses API

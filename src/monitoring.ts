@@ -317,13 +317,13 @@ async function eitherAPIChecks(
     }
 
     // Don't check the platform if the location hasn't changed
-    if (timesAPILocation) {
-        if (curr.status.timesAPI?.lastEvent.location === prev?.status?.timesAPI?.lastEvent.location) return;
-    } else {
-        const prevLastSeen = parseLastSeen(prev?.status?.trainStatusesAPI?.lastSeen);
+    if (prev?.status?.timesAPI) {
+        if (curr.status.timesAPI?.lastEvent.location === prev.status.timesAPI.lastEvent.location) return;
+    } else if (prev?.status?.trainStatusesAPI) {
+        const parsedPrevLastSeen = parseLastSeen(prev.status.trainStatusesAPI.lastSeen);
         if (
-            parsedLastSeen?.station === prevLastSeen?.station &&
-            parsedLastSeen?.platform === prevLastSeen?.platform
+            parsedLastSeen?.station === parsedPrevLastSeen?.station &&
+            parsedLastSeen?.platform === parsedPrevLastSeen?.platform
         ) return;
     }
 

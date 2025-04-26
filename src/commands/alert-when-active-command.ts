@@ -1,16 +1,19 @@
 import {AutocompleteFocusedOption, ButtonInteraction, CommandInteraction} from "discord.js";
 import {alertSubscriptions, proxy, trainEmbed} from "../bot";
-import {FullTrainResponse} from "metro-api-client";
 import {lastHeartbeat, lastHistoryEntries} from "../cache";
 import {getTimetabledTrains} from "../timetable";
+import {CollatedTrain} from "metro-api-client";
 
 export default async function command(interaction: CommandInteraction) {
     const trn = interaction.options.get('trn').value as string;
-    const train = await proxy.getTrain(trn, { props: ["active"] }) as FullTrainResponse;
+    const train = await proxy.getTrain(trn, { props: ["status", "lastChanged"] }) as {
+        lastChanged: Date
+        status?: CollatedTrain
+    }
     if (train.status) {
         await interaction.reply({
             content: `Train T${trn} is already active`,
-            embeds: [trainEmbed({ trn, date: train.lastChanged, status: train.status })]
+            embeds: [trainEmbed({ trn, date: train.lastChanged as Date, status: train.status })]
         });
     } else {
         await subscribeTo(trn, interaction);

@@ -14,7 +14,7 @@ import {
     TrainEmbedData,
     proxy,
     announceHeartbeatError,
-    announceHeartbeatWarning,
+    announceHeartbeatWarnings,
     announceAllTrainsDisappeared,
     announceMultipleDisappearedTrains,
     announceMultipleReappearedTrains,
@@ -32,11 +32,11 @@ import {
     trainsWithHistory, timetable, setLastHeartbeat, lastHeartbeat
 } from "./cache";
 import {
-    ActiveHistoryEntry,
-    ActiveHistoryStatus,
-    CollatedTrain, FullNewHistoryPayload, FullTimetableResponseTable,
+    ActiveTrainHistoryEntry,
+    ActiveTrainHistoryStatus,
+    CollatedTrain, FullNewTrainsHistoryPayload,
     ParsedLastSeen, ParsedTimesAPILocation, parseLastSeen, parseTimesAPILocation, PlatformNumber, TimesApiData,
-    TrainStatusesApiData
+    TrainStatusesApiData, TrainTimetable
 } from "metro-api-client";
 import {
     timeNumbersToStr,
@@ -47,7 +47,7 @@ import {
     whenIsNextDay
 } from "./timetable";
 
-type TrainCheckData<Status = ActiveHistoryStatus> = {
+type TrainCheckData<Status = ActiveTrainHistoryStatus> = {
     trn: string;
     curr: {
         date: Date,
@@ -55,7 +55,7 @@ type TrainCheckData<Status = ActiveHistoryStatus> = {
     };
     prev?: {
         date: Date,
-        status: ActiveHistoryStatus
+        status: ActiveTrainHistoryStatus
     };
 }
 
@@ -64,7 +64,7 @@ const missingTrains = new Map<string, {
     whenToForget: Date;
 } | {
     announced: false;
-    prevStatus: Omit<ActiveHistoryEntry, "active">;
+    prevStatus: Omit<ActiveTrainHistoryEntry, "active">;
     whenToAnnounce: Date;
 }>;
 const seenStationCodes = new Set<string>();
@@ -193,14 +193,14 @@ async function shouldAnnounceUntimetabledActivity(
         }
     }
 
-    let timetableInTimes: FullTimetableResponseTable<true> | undefined;
+    let timetableInTimes: TrainTimetable | undefined;
     if (dateInTimes) {
         timetableInTimes = timetable[getDayType(dateInTimes)][trn];
         if (!timetableInTimes)
             return "wrong-day"
     }
 
-    let timetableInStatuses: FullTimetableResponseTable<true> | undefined;
+    let timetableInStatuses: TrainTimetable | undefined;
     if (dateInStatuses) {
         timetableInStatuses = timetable[getDayType(dateInStatuses)][trn];
         if (!timetableInStatuses)
@@ -249,7 +249,7 @@ function shouldAnnounceUnrecognisedStation(
     return false;
 }
 
-function getUniqueDestinations(status?: ActiveHistoryStatus) {
+function getUniqueDestinations(status?: ActiveTrainHistoryStatus) {
     const destinations = new Set<string>();
     if (status?.trainStatusesAPI) {
         destinations.add(status.trainStatusesAPI.destination);
@@ -374,7 +374,7 @@ async function checkActiveTrain(checkData: TrainCheckData) {
     }
 }
 
-async function handleDisappearedTrain(trn: string, prev: Omit<ActiveHistoryEntry, "active">) {
+async function handleDisappearedTrain(trn: string, prev: Omit<ActiveTrainHistoryEntry, "active">) {
     const dayType = getDayType(lastHeartbeat);
     const trainTimetable = timetable[dayType][trn];
     if (!trainTimetable) {
@@ -439,26 +439,26 @@ async function handleMultipleReappearedTrains(trns: Set<string>) {
     await announceMultipleReappearedTrains(trns);
 }
 
-async function onNewHistory(payload: FullNewHistoryPayload) {
+async function onNewTrainsHistory(payload: FullNewTrainsHistoryPayload) {
     setLastHeartbeat(payload.date);
     if (Object.keys(payload.trains).length === 0) return;
 
     const numberOfPreviouslyActiveTrains = Object.keys(lastHistoryEntries).length;
-    const updatedActiveTrains: Record<string, ActiveHistoryStatus> = {};
+    const updatedActiveTrains: Record<string, ActiveTrainHistoryStatus> = {};
     const disappearedTrains: {
         trn: string,
-        prev: Omit<ActiveHistoryEntry, "active">,
+        prev: Omit<ActiveTrainHistoryEntry, "active">,
     }[] = []
     const reappearedTrains: {
         trn: string,
-        curr: Omit<ActiveHistoryEntry, "active">,
+        curr: Omit<ActiveTrainHistoryEntry, "active">,
     }[] = [];
     embedDatas = {};
     for (const [trn, trainData] of Object.entries(payload.trains)) {
         const historyEntry = {date: payload.date, ...trainData};
         if (historyEntry.active) {
             // I'm not sure why ActiveHistoryEntry isn't being narrowed from the `if`
-            const activeHistoryEntry = historyEntry as ActiveHistoryEntry
+            const activeHistoryEntry = historyEntry as ActiveTrainHistoryEntry;
             const activeHistoryStatus = activeHistoryEntry.status;
             await checkActiveTrain({
                 trn,
@@ -491,12 +491,12 @@ async function onNewHistory(payload: FullNewHistoryPayload) {
             let prev = lastHistoryEntries[trn];
             if (!prev) {
                 // This can occur if the bot was restarted between the previous entry and it going missing
-                const response = await proxy.getHistory(trn, {
+                const response = await proxy.getTrainHistory(trn, {
                     time: { to: payload.date },
                     limit: 1,
                     active: true,
                     props: ["extract"],
-                }) as { extract: [ActiveHistoryEntry] };
+                }) as { extract: [ActiveTrainHistoryEntry] };
                 const { active, ...rest } = response.extract[0];
                 prev = rest;
             }
@@ -543,18 +543,18 @@ export async function startMonitoring() {
             connectedOnce = true;
         }
     }
-    proxy.stream({
-        async onNewHistory(payload) {
+    proxy.streamHistory({
+        async onNewTrainHistoryEntries(payload: FullNewTrainsHistoryPayload) {
             await setConnected();
-            await onNewHistory(payload as FullNewHistoryPayload);
+            await onNewTrainsHistory(payload);
         },
         async onHeartbeatError(payload) {
             await setConnected();
             await announceHeartbeatError(payload);
         },
-        async onHeartbeatWarning(payload) {
+        async onHeartbeatWarnings(payload) {
             await setConnected();
-            await announceHeartbeatWarning(payload);
+            await announceHeartbeatWarnings(payload);
         },
         onConnect() {
             // This gets called if any response is received, even if it's an error page,

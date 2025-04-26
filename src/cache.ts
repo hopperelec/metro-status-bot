@@ -1,7 +1,7 @@
 import {
-    ActiveHistoryEntry,
-    ApiConstants, compareTimes as _compareTimes, FullTimetableResponseTable, FullTrainsResponse,
-    MetroApiClient
+    ActiveTrainHistoryEntry,
+    ApiConstants, compareTimes as _compareTimes, FullTrainsResponse,
+    MetroApiClient, TrainTimetable
 } from "metro-api-client";
 import {DayType, getDayType} from "./timetable";
 import {updateActivity} from "./bot";
@@ -11,10 +11,10 @@ const EXAMPLE_SATURDAY = new Date(2024, 0, 6);
 const EXAMPLE_SUNDAY = new Date(2024, 0, 7);
 
 export let apiConstants: ApiConstants;
-export let timetable: { [key in DayType]: Record<string, FullTimetableResponseTable<true>> };
+export let timetable: { [key in DayType]: Record<string, TrainTimetable> };
 export let timetabledTrns: Set<string> = new Set();
 export let lastHeartbeat: Date;
-export let lastHistoryEntries: Record<string, Omit<ActiveHistoryEntry, "active">> = {};
+export let lastHistoryEntries: Record<string, Omit<ActiveTrainHistoryEntry, "active">> = {};
 export let trainsWithHistory = new Set<string>();
 
 export function setLastHeartbeat(date: Date) {
@@ -29,9 +29,9 @@ export async function refreshCache(proxy: MetroApiClient) {
     // but right now the proxy uses the same timetable for all weekdays, saturdays and sundays.
     // So, for simplicity, the bot will assume that is the case.
     timetable = {
-        weekday: await proxy.getTimetable({ date: EXAMPLE_WEEKDAY }) as Record<string, FullTimetableResponseTable<true>>,
-        saturday: await proxy.getTimetable({ date: EXAMPLE_SATURDAY }) as Record<string, FullTimetableResponseTable<true>>,
-        sunday: await proxy.getTimetable({ date: EXAMPLE_SUNDAY }) as Record<string, FullTimetableResponseTable<true>>
+        weekday: await proxy.getTimetable({ date: EXAMPLE_WEEKDAY }),
+        saturday: await proxy.getTimetable({ date: EXAMPLE_SATURDAY }),
+        sunday: await proxy.getTimetable({ date: EXAMPLE_SUNDAY })
     };
     timetabledTrns = new Set(Object.values(timetable).flatMap(dayTimetable => Object.keys(dayTimetable)));
 

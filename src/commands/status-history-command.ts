@@ -41,7 +41,7 @@ export async function getHistoryPage(trn: string, extra: string = "last"): Promi
         throw new Error(`Invalid extra string: ${extra}`);
     }
 
-    const history = await proxy.getHistory(trn, {
+    const history = await proxy.getTrainHistory(trn, {
         time,
         limit: HISTORY_PAGE_ROWS,
         active: false

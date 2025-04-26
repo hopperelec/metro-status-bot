@@ -2,10 +2,9 @@ import {config} from "dotenv";
 import {Client, EmbedBuilder, Events, GatewayIntentBits, TextChannel} from "discord.js";
 import {handleInteraction, registerCommands} from "./commands";
 import {
-    ActiveHistoryStatus,
+    ActiveTrainHistoryStatus,
     CollatedTrain,
-    HeartbeatErrorPayload,
-    HeartbeatWarningPayload,
+    HeartbeatErrorPayload, HeartbeatWarningsPayload,
     MetroApiClient
 } from "metro-api-client";
 import {apiConstants, lastHeartbeat} from "./cache";
@@ -31,7 +30,7 @@ let mainChannel: TextChannel;
 
 export type TrainEmbedData = {
     trn: string;
-    status: CollatedTrain | ActiveHistoryStatus;
+    status: CollatedTrain | ActiveTrainHistoryStatus;
     date: Date;
 }
 
@@ -147,11 +146,11 @@ export function getAPIName(code: string) {
 
 export async function announceHeartbeatError(payload: HeartbeatErrorPayload) {
     await mainChannel.send({
-        content: `⚠️ An error occurred while fetching or parsing data from ${getAPIName(payload.api)}: ${payload.error}`,
+        content: `⚠️ An error occurred while fetching or parsing data from ${getAPIName(payload.api)}: ${payload.message}`,
     });
 }
 
-export async function announceHeartbeatWarning(payload: HeartbeatWarningPayload) {
+export async function announceHeartbeatWarnings(payload: HeartbeatWarningsPayload) {
     const apiName = getAPIName(payload.api);
     await mainChannel.send({
         content: `⚠️ One or more warnings were produced while parsing data from ${apiName}.`,

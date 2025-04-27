@@ -64,13 +64,18 @@ export async function registerCommands(client: Client) {
                 },
                 {
                     name: 'day',
-                    description: 'Day of the week. Defaults to the current day.',
+                    description: 'Day of the week.',
                     type: 3, // string
                     choices: [
                         {name: 'Weekday', value: 'weekday'},
                         {name: 'Saturday', value: 'saturday'},
                         {name: 'Sunday', value: 'sunday'}
                     ]
+                },
+                {
+                    name: 'date',
+                    description: 'Date, in YYYY-MM-DD format. Defaults to today.',
+                    type: 3, // string
                 }
             ]
         }

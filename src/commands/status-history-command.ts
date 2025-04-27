@@ -8,7 +8,7 @@ import {
 import {trainsWithHistory} from "../cache";
 import {HISTORY_PAGE_ROWS} from "../constants";
 import {proxy} from "../bot";
-import {FullTrainHistoryResponse, TrainHistoryOptions} from "metro-api-client";
+import {TrainHistoryOptions} from "metro-api-client";
 
 function formatDate(date: Date): string {
     return date.toLocaleString("en-GB", {
@@ -45,7 +45,7 @@ export async function getHistoryPage(trn: string, extra: string = "last"): Promi
         time,
         limit: HISTORY_PAGE_ROWS,
         active: false
-    }) as FullTrainHistoryResponse;
+    });
 
     const prevButton = new ButtonBuilder()
         .setLabel("◀️")

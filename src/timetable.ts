@@ -4,7 +4,7 @@ import {TRAIN_DIRECTIONS} from "./constants";
 
 export type DayType =  'weekday' | 'saturday' | 'sunday';
 
-export function getDayType(date?: Date): DayType {
+export function getDayType(date: Date): DayType {
     const dateCopy = new Date(date);
     if (dateCopy.getHours() < apiConstants.NEW_DAY_HOUR) {
         dateCopy.setDate(dateCopy.getDate() - 1);
@@ -33,9 +33,9 @@ export function timeDateToStr(date: Date) {
     return timeNumbersToStr(date.getHours(), date.getMinutes(), date.getSeconds());
 }
 
-export function getTimetabledTrains(date: Date) {
+export function getTimetabledTrains(date?: Date) {
     const timeStr = timeDateToStr(date);
-    return Object.entries(getDayTimetable())
+    return Object.entries(getDayTimetable(date))
         .filter(([_,trainTimetable]) => {
             return getExpectedTrainState(trainTimetable, timeStr).state === "active";
         })

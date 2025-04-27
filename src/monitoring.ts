@@ -25,11 +25,10 @@ import {
 } from "./bot";
 import {
     apiConstants,
-    getDayTimetable,
     getStationCode,
     refreshCache,
     lastHistoryEntries, compareTimes,
-    trainsWithHistory, timetable, setLastHeartbeat, lastHeartbeat
+    trainsWithHistory, weekTimetable, setLastHeartbeat, lastHeartbeat, getTodaysTimetable
 } from "./cache";
 import {
     ActiveTrainHistoryEntry,
@@ -121,7 +120,7 @@ function checkPlatform(
             return;
         case 2:
             if (stationName !== "St James") return;
-            const trainTimetable = getDayTimetable()[trn];
+            const trainTimetable = (getTodaysTimetable())[trn];
             if (!trainTimetable) return;
             const fullTimetable = getFlatTimetableForTRN(trainTimetable);
             if (
@@ -195,14 +194,14 @@ async function shouldAnnounceUntimetabledActivity(
 
     let timetableInTimes: TrainTimetable | undefined;
     if (dateInTimes) {
-        timetableInTimes = timetable[getDayType(dateInTimes)][trn];
+        timetableInTimes = weekTimetable[getDayType(dateInTimes)][trn];
         if (!timetableInTimes)
             return "wrong-day"
     }
 
     let timetableInStatuses: TrainTimetable | undefined;
     if (dateInStatuses) {
-        timetableInStatuses = timetable[getDayType(dateInStatuses)][trn];
+        timetableInStatuses = weekTimetable[getDayType(dateInStatuses)][trn];
         if (!timetableInStatuses)
             return "wrong-day"
     }
@@ -376,7 +375,7 @@ async function checkActiveTrain(checkData: TrainCheckData) {
 
 async function handleDisappearedTrain(trn: string, prev: Omit<ActiveTrainHistoryEntry, "active">) {
     const dayType = getDayType(lastHeartbeat);
-    const trainTimetable = timetable[dayType][trn];
+    const trainTimetable = weekTimetable[dayType][trn];
     if (!trainTimetable) {
         await announceTrainOnWrongDayDisappeared({trn, ...prev}, dayType);
         return;

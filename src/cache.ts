@@ -3,37 +3,51 @@ import {
     ApiConstants, compareTimes as _compareTimes, FullTrainsResponse,
     MetroApiClient, TrainTimetable
 } from "metro-api-client";
-import {DayType, getDayType} from "./timetable";
-import {updateActivity} from "./bot";
+import {DayType, getDayType, whenIsNextDay} from "./timetable";
+import {proxy, updateActivity} from "./bot";
 
 const EXAMPLE_WEEKDAY = new Date(2024, 0, 1);
 const EXAMPLE_SATURDAY = new Date(2024, 0, 6);
 const EXAMPLE_SUNDAY = new Date(2024, 0, 7);
 
-export let apiConstants: ApiConstants;
-export let timetable: { [key in DayType]: Record<string, TrainTimetable> };
-export let timetabledTrns: Set<string> = new Set();
 export let lastHeartbeat: Date;
-export let lastHistoryEntries: Record<string, Omit<ActiveTrainHistoryEntry, "active">> = {};
-export let trainsWithHistory = new Set<string>();
-
 export function setLastHeartbeat(date: Date) {
     lastHeartbeat = date;
 }
+
+let whenToRefreshTimetable: Date
+let todaysTimetable: Record<string, TrainTimetable>;
+
+async function refreshTodaysTimetable() {
+    const date = new Date();
+    whenToRefreshTimetable = whenIsNextDay(date);
+    todaysTimetable = await proxy.getTimetable({ date });
+}
+
+export async function getTodaysTimetable() {
+    if (whenToRefreshTimetable < new Date()) {
+        await refreshTodaysTimetable();
+    }
+    return todaysTimetable;
+}
+
+export let apiConstants: ApiConstants;
+export let weekTimetable: { [key in DayType]: Record<string, TrainTimetable> };
+export let timetabledTrns: Set<string> = new Set();
+export let lastHistoryEntries: Record<string, Omit<ActiveTrainHistoryEntry, "active">> = {};
+export let trainsWithHistory = new Set<string>();
 
 export async function refreshCache(proxy: MetroApiClient) {
     console.log("Refreshing cache...");
     apiConstants = await proxy.getConstants();
 
-    // The proxy does not enforce this, since it might change in the future,
-    // but right now the proxy uses the same timetable for all weekdays, saturdays and sundays.
-    // So, for simplicity, the bot will assume that is the case.
-    timetable = {
+    weekTimetable = {
         weekday: await proxy.getTimetable({ date: EXAMPLE_WEEKDAY }),
         saturday: await proxy.getTimetable({ date: EXAMPLE_SATURDAY }),
         sunday: await proxy.getTimetable({ date: EXAMPLE_SUNDAY })
     };
-    timetabledTrns = new Set(Object.values(timetable).flatMap(dayTimetable => Object.keys(dayTimetable)));
+    await refreshTodaysTimetable();
+    timetabledTrns = new Set(Object.values(weekTimetable).flatMap(dayTimetable => Object.keys(dayTimetable)));
 
     const trainsResponse = await proxy.getTrains() as FullTrainsResponse;
     lastHistoryEntries = Object.fromEntries(
@@ -61,8 +75,8 @@ export function getStationCode(station: string) {
     }
 }
 
-export function getDayTimetable(date?: Date) {
-    return timetable[getDayType(date)];
+export function getDayTimetable(date: Date) {
+    return weekTimetable[getDayType(date)];
 }
 
 export function compareTimes(a: string, b: string) {

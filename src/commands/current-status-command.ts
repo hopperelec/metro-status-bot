@@ -1,5 +1,5 @@
 import {ActionRowBuilder, AutocompleteFocusedOption, ButtonBuilder, ButtonStyle, CommandInteraction} from "discord.js";
-import {getDayTimetable, getStationCode, lastHistoryEntries} from "../cache";
+import {getStationCode, lastHistoryEntries, getTodaysTimetable} from "../cache";
 import {FullTrainResponse, parseLastSeen, parseTimesAPILocation} from "metro-api-client";
 import {proxy, trainEmbed} from "../bot";
 import {
@@ -11,7 +11,7 @@ import {
 
 export default async function command(interaction: CommandInteraction) {
     const trn = interaction.options.get('trn').value as string;
-    const trainTimetable = getDayTimetable()[trn];
+    const trainTimetable = (await getTodaysTimetable())[trn];
 
     let train: FullTrainResponse;
     try {

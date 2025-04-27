@@ -15,6 +15,8 @@ function formatTime(time: string) {
     return `${time.slice(0, 2)}:${time.slice(2, 4)}${time.length > 4 ? `:${time.slice(4)}` : ''}`;
 }
 
+const STATION_REGEX = new RegExp(/^([A-Z]{3})( - .+)?/i);
+
 function formatCachedTimetable(
     trainTimetable: TrainTimetable,
     station?: string,
@@ -118,6 +120,16 @@ export default async function command(interaction: CommandInteraction) {
         return;
     }
 
+    const stationMatch = station?.match(STATION_REGEX);
+    if (!stationMatch) {
+        await interaction.reply({
+            content: "Invalid station",
+            flags: ["Ephemeral"]
+        });
+        return;
+    }
+    const stationCode = stationMatch[1];
+
     let whenDescription: string;
     let departure: FullDeparture;
     let arrival: FullArrival;
@@ -131,7 +143,7 @@ export default async function command(interaction: CommandInteraction) {
         whenDescription = `on ${dayType}s`;
         departure = trainTimetable.departure as FullDeparture;
         arrival = trainTimetable.arrival as FullArrival;
-        timesString = formatCachedTimetable(trainTimetable, station, direction);
+        timesString = formatCachedTimetable(trainTimetable, stationCode, direction);
     } else if (dateString) {
         const date = new Date(dateString);
         if (isNaN(date.getTime())) {
@@ -141,7 +153,7 @@ export default async function command(interaction: CommandInteraction) {
             });
             return;
         }
-        const options = { trn, date, station, direction }
+        const options = { trn, date, station: stationCode, direction }
         let trainTimetable: TrainTimetable<typeof options>;
         try {
             trainTimetable = await proxy.getTimetable(options)
@@ -162,12 +174,12 @@ export default async function command(interaction: CommandInteraction) {
         whenDescription = 'today';
         departure = trainTimetable.departure as FullDeparture;
         arrival = trainTimetable.arrival as FullArrival;
-        timesString = formatCachedTimetable(trainTimetable, station, direction);
+        timesString = formatCachedTimetable(trainTimetable, stationCode, direction);
     }
 
     let whereDescription: string;
-    if (station) {
-        const stationName = apiConstants.STATION_CODES[station];
+    if (stationCode) {
+        const stationName = apiConstants.STATION_CODES[stationCode];
         whereDescription = direction
             ? `at ${stationName} ${direction}-line`
             : `at ${stationName}`;
@@ -192,6 +204,7 @@ export function autoCompleteOptions(focusedOption: AutocompleteFocusedOption) {
         return Array.from(timetabledTrns);
     }
     if (focusedOption.name === 'station') {
-        return Object.keys(apiConstants.STATION_CODES);
+        return Object.entries(apiConstants.STATION_CODES)
+            .map(([code, name]) => `${code} - ${name}`)
     }
 }

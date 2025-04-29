@@ -5,7 +5,7 @@ import {
     ActiveTrainHistoryStatus,
     CollatedTrain,
     HeartbeatErrorPayload, HeartbeatWarningsPayload,
-    MetroApiClient
+    MetroApiClient, TimesApiData
 } from "metro-api-client";
 import {apiConstants, lastHeartbeat} from "./cache";
 import {startMonitoring} from "./monitoring";
@@ -34,6 +34,10 @@ export type TrainEmbedData = {
     date: Date;
 }
 
+export function renderTimesAPILastSeen(data: TimesApiData["lastEvent"]) {
+    return `${data.type.replaceAll("_", " ")} ${data.location} at ${data.time.toLocaleTimeString('en-GB')}`;
+}
+
 export function trainEmbed(train: TrainEmbedData) {
     const embed = new EmbedBuilder()
         .setTitle(`T${train.trn}`);
@@ -57,7 +61,7 @@ export function trainEmbed(train: TrainEmbedData) {
         embed.addFields(
             {
                 name: "⌛ Last seen",
-                value: `${data.lastEvent.type.replaceAll("_", " ")} ${data.lastEvent.location} at ${data.lastEvent.time.toLocaleTimeString('en-GB')}`
+                value: renderTimesAPILastSeen(data.lastEvent)
             },
             {
                 name: "⌛ Planned destinations",

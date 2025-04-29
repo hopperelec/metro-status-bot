@@ -107,7 +107,7 @@ async function getFullEmbedData({ trn, curr }: TrainCheckData): Promise<TrainEmb
 }
 
 // Doesn't announce on its own, in case I want to handle each API separately
-function checkPlatform(
+async function checkPlatform(
     trn: string,
     stationName: string,
     platform: PlatformNumber,
@@ -120,7 +120,7 @@ function checkPlatform(
             return;
         case 2:
             if (stationName !== "St James") return;
-            const trainTimetable = (getTodaysTimetable())[trn];
+            const trainTimetable = (await getTodaysTimetable())[trn];
             if (!trainTimetable) return;
             const fullTimetable = getFlatTimetableForTRN(trainTimetable);
             if (
@@ -326,7 +326,7 @@ async function eitherAPIChecks(
         ) return;
     }
 
-    const platformCheck = checkPlatform(
+    const platformCheck = await checkPlatform(
         trn,
         parsedLastSeen?.station ?? timesAPILocation.station,
         parsedLastSeen?.platform ?? timesAPILocation.platform,

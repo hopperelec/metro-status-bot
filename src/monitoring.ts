@@ -1,4 +1,4 @@
-import {DEFAULT_MISSING_THRESHOLD, MULTIPLE_TRAINS_THRESHOLD} from "./constants";
+import {MULTIPLE_TRAINS_THRESHOLD} from "./constants";
 import {
     alertNowActive,
     alertSubscriptions,
@@ -383,7 +383,11 @@ async function handleDisappearedTrain(trn: string, prev: Omit<ActiveTrainHistory
 
     if (getExpectedTrainState(trainTimetable, timeDateToStr(lastHeartbeat)).state !== "active") return;
 
-    let missingThreshold = DEFAULT_MISSING_THRESHOLD;
+    // TODO: Temp, just to see if the missing threshold is still needed
+    await announceDisappearedTrain({trn, ...prev});
+    missingTrains.set(trn, { announced: true, whenToForget: whenIsNextDay(lastHeartbeat) });
+
+    // let missingThreshold = MISSING_THRESHOLD;
 
     // TODO: Special cases for:
     // - disappearing at Pallion
@@ -392,20 +396,20 @@ async function handleDisappearedTrain(trn: string, prev: Omit<ActiveTrainHistory
     //   when they're timetabled to be on their last journey towards the shared stretch
     // Although some/all of these might not be needed with the times API
 
-    const whenToAnnounce = new Date(lastHeartbeat.getTime() + missingThreshold * 60000);
-    if (whenToAnnounce < lastHeartbeat) {
-        await announceDisappearedTrain({trn, ...prev});
-        missingTrains.set(trn, { announced: true, whenToForget: whenIsNextDay(lastHeartbeat) });
-    } else {
-        const fullTimetable = getFlatTimetableForTRN(trainTimetable);
-        if (compareTimes(timeDateToStr(whenToAnnounce), fullTimetable[fullTimetable.length - 1].time) < 0) {
-            missingTrains.set(trn, {
-                announced: false,
-                prevStatus: prev,
-                whenToAnnounce
-            });
-        }
-    }
+    // const whenToAnnounce = new Date(lastHeartbeat.getTime() + missingThreshold * 60000);
+    // if (whenToAnnounce < lastHeartbeat) {
+    //     await announceDisappearedTrain({trn, ...prev});
+    //     missingTrains.set(trn, { announced: true, whenToForget: whenIsNextDay(lastHeartbeat) });
+    // } else {
+    //     const fullTimetable = getFlatTimetableForTRN(trainTimetable);
+    //     if (compareTimes(timeDateToStr(whenToAnnounce), fullTimetable[fullTimetable.length - 1].time) < 0) {
+    //         missingTrains.set(trn, {
+    //             announced: false,
+    //             prevStatus: prev,
+    //             whenToAnnounce
+    //         });
+    //     }
+    // }
 }
 
 async function handleMultipleDisappearedTrains(trns: Set<string>, isAllTrains: boolean) {

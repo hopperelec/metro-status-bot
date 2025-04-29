@@ -10,12 +10,11 @@ import {DayType} from "../timetable";
 import {apiConstants, compareTimes, weekTimetable, timetabledTrns, getTodaysTimetable} from "../cache";
 import {TRAIN_DIRECTIONS} from "../constants";
 import {proxy} from "../bot";
+import {getStationOptions, parseStationOption} from "./index";
 
 function formatTime(time: string) {
     return `${time.slice(0, 2)}:${time.slice(2, 4)}${time.length > 4 ? `:${time.slice(4)}` : ''}`;
 }
-
-const STATION_REGEX = new RegExp(/^([A-Z]{3})( - .+)?/i);
 
 function formatCachedTimetable(
     trainTimetable: TrainTimetable,
@@ -120,15 +119,17 @@ export default async function command(interaction: CommandInteraction) {
         return;
     }
 
-    const stationMatch = station?.match(STATION_REGEX);
-    if (!stationMatch) {
-        await interaction.reply({
-            content: "Invalid station",
-            flags: ["Ephemeral"]
-        });
-        return;
+    let stationCode: string | undefined;
+    if (station) {
+        stationCode = parseStationOption(station);
+        if (!stationCode) {
+            await interaction.reply({
+                content: "Invalid station",
+                flags: ["Ephemeral"]
+            });
+            return;
+        }
     }
-    const stationCode = stationMatch[1];
 
     let whenDescription: string;
     let departure: FullDeparture;
@@ -204,7 +205,6 @@ export function autoCompleteOptions(focusedOption: AutocompleteFocusedOption) {
         return Array.from(timetabledTrns);
     }
     if (focusedOption.name === 'station') {
-        return Object.entries(apiConstants.STATION_CODES)
-            .map(([code, name]) => `${code} - ${name}`)
+        return getStationOptions();
     }
 }

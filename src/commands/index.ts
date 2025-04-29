@@ -14,6 +14,8 @@ import alertWhenActiveCommand, {
 import listActiveCommand from "./list-active-command";
 import timetableCommand, {autoCompleteOptions as timetableAutoComplete} from "./timetable-command";
 import {PROPERTY_CHOICES as HISTORY_PROPERTY_CHOICES} from "./status-history-command";
+import dueTimesCommand, {autoCompleteOptions as dueTimesAutoComplete} from "./due-times-command";
+import {apiConstants} from "../cache";
 
 export async function registerCommands(client: Client) {
     const TRN_OPTION = {
@@ -109,6 +111,26 @@ export async function registerCommands(client: Client) {
                     type: 3, // string
                 }
             ]
+        },
+        {
+            name: 'due-times',
+            description: 'Get the next trains due at a station (or a specific platform)',
+            options: [
+                {
+                    name: 'station',
+                    description: 'Station code',
+                    type: 3, // string
+                    required: true,
+                    autocomplete: true,
+                },
+                {
+                    name: 'platform',
+                    description: 'Platform number',
+                    type: 4, // integer
+                    minValue: 1,
+                    maxValue: 4,
+                }
+            ]
         }
     ]);
 }
@@ -125,6 +147,8 @@ export async function handleInteraction(interaction: Interaction) {
             await listActiveCommand(interaction);
         } else if (interaction.commandName === 'train-timetable') {
             await timetableCommand(interaction);
+        } else if (interaction.commandName === 'due-times') {
+            await dueTimesCommand(interaction);
         }
 
     } else if (interaction.isButton()) {
@@ -149,13 +173,26 @@ export async function handleInteraction(interaction: Interaction) {
             options = alertWhenActiveAutoComplete(focusedOption);
         } else if (interaction.commandName === 'train-timetable') {
             options = timetableAutoComplete(focusedOption);
+        } else if (interaction.commandName === 'due-times') {
+            options = await dueTimesAutoComplete(focusedOption);
         }
         const prompt = focusedOption.value.toLowerCase();
         await interaction.respond(
             options
-                .filter(choice => choice.toLowerCase().startsWith(prompt))
+                .filter(choice => choice.toLowerCase().includes(prompt))
                 .map(choice => ({name: choice, value: choice}))
                 .slice(0, 25)
         )
     }
+}
+
+export function getStationOptions() {
+    return Object.entries(apiConstants.STATION_CODES)
+        .map(([code, name]) => `${code} - ${name}`);
+}
+
+const STATION_REGEX = new RegExp(/^([A-Z]{3})( - .+)?/i);
+export function parseStationOption(station: string) {
+    const match = station.match(STATION_REGEX);
+    return match?.[1];
 }

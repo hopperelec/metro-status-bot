@@ -1,5 +1,5 @@
 import {ActionRowBuilder, AutocompleteFocusedOption, ButtonBuilder, ButtonStyle, CommandInteraction} from "discord.js";
-import {getStationCode, lastHistoryEntries, getTodaysTimetable} from "../cache";
+import {getStationCode, lastHistoryEntries, getTodaysTimetable, lastHeartbeat, setLastHeartbeat} from "../cache";
 import {FullTrainResponse, parseLastSeen, parseTimesAPILocation} from "metro-api-client";
 import {proxy, trainEmbed} from "../bot";
 import {
@@ -20,6 +20,10 @@ export default async function command(interaction: CommandInteraction) {
         await interaction.reply(`No train with TRN ${trn} is active or timetabled to be running`);
         return;
     }
+
+    // The embed will be sent before the stream receives the update,
+    // so we set this in advance to make sure the embed shows the current time.
+    setLastHeartbeat(train.lastChecked);
 
     let lines: string[] = [];
 

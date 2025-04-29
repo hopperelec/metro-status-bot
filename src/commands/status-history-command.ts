@@ -284,12 +284,18 @@ export async function getHistoryPage(
         timeDescription = "Earliest entries";
     } else if (range === "last") {
         timeDescription = "Latest entries";
-    } else if (range.startsWith("...")) {
-        time = { to: new Date(+range.slice(3)) };
-        timeDescription = `Until ${formatDate(time.to)}`;
-    } else if (range.endsWith("...")) {
-        time = { from: new Date(+range.slice(0, -3)) };
-        timeDescription = `From ${formatDate(time.from)}`;
+    } else if (range.includes("...")) {
+        if (range.startsWith("...")) {
+            time = {to: new Date(+range.slice(3))};
+            timeDescription = `Until ${formatDate(time.to)}`;
+        } else if (range.endsWith("...")) {
+            time = {from: new Date(+range.slice(0, -3))};
+            timeDescription = `From ${formatDate(time.from)}`;
+        } else {
+            const [from, to] = range.split("...");
+            time = { from: new Date(+from), to: new Date(+to) };
+            timeDescription = `Between ${formatDate(time.from)} and ${formatDate(time.to)}`;
+        }
     } else {
         throw new Error(`Invalid range: ${range}`);
     }
@@ -339,16 +345,50 @@ export async function getHistoryPage(
                     .setCustomId(`${buttonIdPrefix}:last`)
                     .setLabel("⏭️")
                     .setStyle(ButtonStyle.Primary)
-                // TODO: Add a button to view the history to/from a specific time, using a modal
             )
         ]
     }
 }
 
+function timeStringToDate(time: string) {
+    const now = new Date();
+    const date = new Date(now);
+    const [hours, minutes, seconds = 0] = time.split(':').map(Number);
+    date.setHours(hours, minutes, seconds);
+    if (date > now) {
+        date.setDate(date.getDate() - 1);
+    }
+    return date;
+}
+
 export default async function command(interaction: CommandInteraction) {
+    const startDate = interaction.options.get('start-date')?.value as string;
+    const startTime = interaction.options.get('start-time')?.value as string;
+    const endDate = interaction.options.get('end-date')?.value as string;
+    const endTime = interaction.options.get('end-time')?.value as string;
+    let from: Date;
+    let to: Date;
+    if (startDate) {
+        from = startTime ? new Date(`${startDate}T${startTime}`) : new Date(startDate);
+    } else if (startTime) {
+        from = timeStringToDate(startTime);
+        from.setMilliseconds(0);
+    }
+    if (endDate) {
+        if (endTime) {
+            to = new Date(`${endDate}T${endTime}`);
+        } else {
+            to = new Date(endDate);
+            to.setHours(23, 59, 59, 999);
+        }
+    } else if (endTime) {
+        to = timeStringToDate(endTime);
+        to.setMilliseconds(999);
+    }
     await interaction.reply(await getHistoryPage(
         interaction.options.get('trn').value as string,
-        interaction.options.get('property').value as string
+        interaction.options.get('property').value as string,
+        from || to ? `${from?.getTime() || ''}...${to?.getTime() || ''}` : undefined,
     ));
 }
 

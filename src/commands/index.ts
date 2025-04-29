@@ -41,6 +41,26 @@ export async function registerCommands(client: Client) {
                     choices: Object.entries(HISTORY_PROPERTY_CHOICES)
                         .map(([key, choice]) => ({ name: choice.displayName, value: key })),
                     required: true
+                },
+                {
+                    name: 'start-date',
+                    description: 'Start date to show history from, in YYYY-MM-DD format. Defaults to today/yesterday if time is set.',
+                    type: 3, // string
+                },
+                {
+                    name: 'start-time',
+                    description: 'Start time to show history from, in HH:MM format',
+                    type: 3, // string
+                },
+                {
+                    name: 'end-date',
+                    description: 'End date to show history up to, in YYYY-MM-DD format. Defaults to today/yesterday if time is set.',
+                    type: 3, // string
+                },
+                {
+                    name: 'end-time',
+                    description: 'End time to show history up to, in HH:MM[:SS] format',
+                    type: 3, // string
                 }
             ]
         },

@@ -81,10 +81,14 @@ export default async function command(interaction: CommandInteraction) {
     const embedBuilder = new EmbedBuilder();
     let lastChecked: Date;
     if (platform) {
+        let stationName: string;
         let dueTimes: (BaseFilteredDueTime & { platform: PlatformNumber })[];
         try {
             if (["MMT", "MTS", "MTW", "MTE"].includes(stationCode)) {
                 stationCode = [1, 2].includes(platform) ? "MTS" : "MTW";
+                stationName = "Monument";
+            } else {
+                stationName = apiConstants.STATION_CODES[stationCode];
             }
             const response = await proxy.getPlatformDueTimes(
                 `${stationCode};${platform}`,
@@ -99,7 +103,7 @@ export default async function command(interaction: CommandInteraction) {
             await interaction.reply(`An error occurred while fetching the due times: ${e}`);
             return;
         }
-        embedBuilder.setTitle(`Next trains due at ${apiConstants.STATION_CODES[stationCode]} platform ${platform}`);
+        embedBuilder.setTitle(`Next trains due at ${stationName} platform ${platform}`);
         if (dueTimes.length === 0) {
             embedBuilder.setDescription("*No trains due at this platform.*");
         } else {

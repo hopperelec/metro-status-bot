@@ -522,6 +522,9 @@ async function _refreshCache() {
     }
 }
 
+const ongoingErrors = new Set<string>();
+const lastErrors = new Set<string>();
+
 export async function startMonitoring() {
     await _refreshCache();
     console.log("Connecting to stream...");
@@ -541,10 +544,19 @@ export async function startMonitoring() {
         async onNewTrainHistoryEntries(payload: FullNewTrainsHistoryPayload) {
             await setConnected();
             await onNewTrainsHistory(payload);
+            for (const error of ongoingErrors) {
+                if (!lastErrors.has(error)) {
+                    ongoingErrors.delete(error);
+                }
+            }
+            lastErrors.clear();
         },
         async onHeartbeatError(payload) {
             await setConnected();
-            await announceHeartbeatError(payload);
+            lastErrors.add(payload.message);
+            if (ongoingErrors.add(payload.message)) {
+                await announceHeartbeatError(payload);
+            }
         },
         async onHeartbeatWarnings(payload) {
             await setConnected();

@@ -159,7 +159,11 @@ export async function handleInteraction(interaction: Interaction) {
             // TODO: Only allow the user who ran the command to navigate the original message.
             // For other users, an ephemeral message should be created with the new page.
             const [trn, property, ...extra] = rest;
-            await interaction.update(await getHistoryPage(trn, property, extra.join(':')));
+            await interaction.update({
+                content: `Loading...`,
+                components: []
+            });
+            await interaction.editReply(await getHistoryPage(trn, property, extra.join(':')));
         }
 
     } else if (interaction.isAutocomplete()) {

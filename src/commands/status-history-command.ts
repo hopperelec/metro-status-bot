@@ -385,7 +385,8 @@ export default async function command(interaction: CommandInteraction) {
         to = timeStringToDate(endTime);
         to.setMilliseconds(999);
     }
-    await interaction.reply(await getHistoryPage(
+    await interaction.deferReply()
+    await interaction.editReply(await getHistoryPage(
         interaction.options.get('trn').value as string,
         interaction.options.get('property').value as string,
         from || to ? `${from?.getTime() || ''}...${to?.getTime() || ''}` : undefined,

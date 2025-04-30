@@ -107,11 +107,11 @@ export function getExpectedTrainState(trainTimetable: TrainTimetable, time: stri
         state: 'ending'
     };
 
-    const previousEntryIndex = fullTimetable.findIndex(({ time: t }) => compareTimes(t, time) >= 0) - 1;
+    const previousEntryIndex = fullTimetable.findIndex(({ time: t }) => compareTimes(t, time) >= 0);
     const previousEntry = fullTimetable[previousEntryIndex];
-    const station1 = previousEntry.station === "FORMS" ? fullTimetable[previousEntryIndex - 1].station : previousEntry.station;
-    const nextEntry = fullTimetable[previousEntryIndex + 1];
-    const station2 = nextEntry.station === "FORMS" ? fullTimetable[previousEntryIndex + 2].station : nextEntry.station;
+    const station1 = (previousEntry.station === "FORMS" ? fullTimetable[previousEntryIndex - 1] : previousEntry).station;
+    const nextStation = fullTimetable[previousEntryIndex + 1].station;
+    const station2 = nextStation === "FORMS" ? fullTimetable[previousEntryIndex + 2].station : nextStation;
     return {
         station1,
         station2,

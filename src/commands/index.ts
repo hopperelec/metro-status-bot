@@ -5,7 +5,7 @@ import {
 import currentStatusCommand, {autoCompleteOptions as currentStatusAutoComplete} from "./current-status-command";
 import statusHistoryCommand, {
     autoCompleteOptions as statusHistoryAutoComplete,
-    getHistoryPage
+    button as historyButtons
 } from "./status-history-command";
 import alertWhenActiveCommand, {
     autoCompleteOptions as alertWhenActiveAutoComplete,
@@ -162,14 +162,7 @@ export async function handleInteraction(interaction: Interaction) {
         if (action === 'alert') {
             await subscribeTo(rest[0], interaction);
         } else if (action === 'history') {
-            // TODO: Only allow the user who ran the command to navigate the original message.
-            // For other users, an ephemeral message should be created with the new page.
-            const [trn, property, ...extra] = rest;
-            await interaction.update({
-                content: `Loading...`,
-                components: []
-            });
-            await interaction.editReply(await getHistoryPage(trn, property, extra.join(':')));
+            await historyButtons(interaction, rest);
         }
 
     } else if (interaction.isAutocomplete()) {

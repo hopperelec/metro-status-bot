@@ -2,7 +2,7 @@ import {
     ActionRowBuilder,
     AutocompleteFocusedOption,
     BaseMessageOptionsWithPoll,
-    ButtonBuilder, ButtonStyle,
+    ButtonBuilder, ButtonInteraction, ButtonStyle,
     CommandInteraction
 } from "discord.js";
 import {apiConstants, trainsWithHistory} from "../cache";
@@ -268,7 +268,7 @@ async function defaultFetch(
     };
 }
 
-export async function getHistoryPage(
+async function getHistoryPage(
     trn: string, historyPropertyName: string, range: string = "last"
 ): Promise<BaseMessageOptionsWithPoll> {
     const historyProperty = PROPERTY_CHOICES[historyPropertyName];
@@ -395,4 +395,13 @@ export default async function command(interaction: CommandInteraction) {
 
 export function autoCompleteOptions(focusedOption: AutocompleteFocusedOption) {
     return Array.from(trainsWithHistory);
+}
+
+export async function button(interaction: ButtonInteraction, rest: string[]) {
+    const [trn, property, ...extra] = rest;
+    await interaction.update({
+        content: `Loading...`,
+        components: []
+    });
+    await interaction.editReply(await getHistoryPage(trn, property, extra.join(':')));
 }

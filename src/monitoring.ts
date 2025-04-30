@@ -387,16 +387,7 @@ async function handleDisappearedTrain(trn: string, prev: Omit<ActiveTrainHistory
     await announceDisappearedTrain({trn, ...prev});
     missingTrains.set(trn, { announced: true, whenToForget: whenIsNextDay(lastHeartbeat) });
 
-    // let missingThreshold = MISSING_THRESHOLD;
-
-    // TODO: Special cases for:
-    // - disappearing at Pallion
-    // - disappearing at the train's destination
-    // - green line trains disappearing outside the shared stretch
-    //   when they're timetabled to be on their last journey towards the shared stretch
-    // Although some/all of these might not be needed with the times API
-
-    // const whenToAnnounce = new Date(lastHeartbeat.getTime() + missingThreshold * 60000);
+    // const whenToAnnounce = new Date(lastHeartbeat.getTime() + MISSING_THRESHOLD * 60000);
     // if (whenToAnnounce < lastHeartbeat) {
     //     await announceDisappearedTrain({trn, ...prev});
     //     missingTrains.set(trn, { announced: true, whenToForget: whenIsNextDay(lastHeartbeat) });

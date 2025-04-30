@@ -196,10 +196,30 @@ export async function announceUnrecognisedDestinations(
     prevStatus: TrainEmbedData,
     unrecognisedDestinations: string[]
 ) {
-    // TODO: Special cases for "Gosforth Depot", "Not in service" and "Terminates"
-    // TODO: Note for yellow line trains heading to a blank station, which seems to usually mean "Bede"
+    let message: string;
+    if (unrecognisedDestinations.length === 1) {
+        const destination = unrecognisedDestinations[0];
+        if (["terminates", "not in service"].includes(destination.toLowerCase())) {
+            message = `is showing as "${destination}" on the Pop app.`;
+        } else if (destination.toLowerCase() === "gosforth depot") {
+            message = `is heading to ${destination} but is showing on the Pop app.`;
+        } else if (destination === "") {
+            message = 'is showing a blank destination on the Pop app. This often happens when it is actually heading to Bede.';
+        } else {
+            message = `has a new unrecognised current and/or planned destination "${destination}"`;
+        }
+    } else {
+        for (const [i, destination] of unrecognisedDestinations.entries()) {
+            if (destination === "") {
+                unrecognisedDestinations[i] = `*[BLANK]* (often happens when it is actually heading to Bede)`;
+            } else {
+                unrecognisedDestinations[i] = `"${destination}"`;
+            }
+        }
+        message = `has ${unrecognisedDestinations.length} new unrecognised destinations: ${unrecognisedDestinations.join(", ")}`;
+    }
     await mainChannel.send({
-        content: `🤔 Train T${currStatus.trn} has ${unrecognisedDestinations.length} new unrecognised current and/or planned destination(s):\n${unrecognisedDestinations.join(", ")}`,
+        content: `🤔 Train T${currStatus.trn} ${message}`,
         embeds: [trainEmbed(currStatus), prevTrainStatusEmbed(prevStatus)]
     });
 }

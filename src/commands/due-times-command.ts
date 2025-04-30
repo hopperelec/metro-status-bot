@@ -1,4 +1,10 @@
-import {AutocompleteFocusedOption, CommandInteraction, EmbedBuilder} from "discord.js";
+import {
+    ActionRowBuilder,
+    AutocompleteFocusedOption, ButtonBuilder,
+    ButtonInteraction, ButtonStyle,
+    CommandInteraction,
+    EmbedBuilder
+} from "discord.js";
 import {
     DueTime,
     PlatformNumber, TimesApiData
@@ -6,6 +12,7 @@ import {
 import {proxy, renderTimesAPILastSeen} from "../bot";
 import {getStationOptions, parseStationOption} from "./index";
 import {apiConstants} from "../cache";
+import {DUE_TIMES_PAGE_ROWS} from "../constants";
 
 const PROPS = [
     "lastChecked",
@@ -66,6 +73,128 @@ function summarizeTrain(time: DueTime, train: BaseFilteredDueTime['status']) {
     return lines.join('\n');
 }
 
+function getButtons(context: string, page: number, isLastPage: boolean) {
+    return [
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`due-times:${context}:first`)
+                .setLabel("⏮️")
+                .setStyle(ButtonStyle.Primary),
+            new ButtonBuilder()
+                .setCustomId(`due-times:${context}:${page - 1}`)
+                .setLabel("◀️")
+                .setStyle(ButtonStyle.Primary)
+                .setDisabled(page === 1),
+            new ButtonBuilder()
+                .setCustomId(`due-times:${context}:${page}`)
+                .setLabel("🔄")
+                .setStyle(ButtonStyle.Primary),
+            new ButtonBuilder()
+                .setCustomId(`due-times:${context}:${page + 1}`)
+                .setLabel("▶️")
+                .setStyle(ButtonStyle.Primary)
+                .setDisabled(isLastPage),
+            new ButtonBuilder()
+                .setCustomId(`due-times:${context}:last`)
+                .setLabel("⏭️")
+                .setStyle(ButtonStyle.Primary)
+        )
+    ]
+}
+
+async function getStationPage(
+    stationCode: string, page = "first"
+) {
+    const embedBuilder = new EmbedBuilder();
+    let dueTimes: BaseFilteredDueTime[];
+    try {
+        const response = await proxy.getStationDueTimes(
+            stationCode,
+            { props: PROPS }
+        ) as {
+            lastChecked: Date,
+            dueTimes: typeof dueTimes
+        };
+        embedBuilder.setFooter({ text: `Last checked: ${response.lastChecked.toLocaleDateString('en-GB')}` });
+        dueTimes = response.dueTimes;
+    } catch (e) {
+        return `An error occurred while fetching the due times: ${e}`;
+    }
+    const numPages = Math.ceil(dueTimes.length / DUE_TIMES_PAGE_ROWS);
+    let pageNum: number;
+    if (page === "first") pageNum = 1;
+    else if (page === "last") pageNum = numPages;
+    else pageNum = Math.min(+page, numPages);
+    embedBuilder.setTitle(`Next trains due at ${apiConstants.STATION_CODES[stationCode]} - Page ${pageNum}/${numPages}`);
+    if (dueTimes.length === 0) {
+        embedBuilder.setDescription("*No trains due at this station.*");
+    } else {
+        embedBuilder.addFields(
+            dueTimes.slice((pageNum - 1) * DUE_TIMES_PAGE_ROWS, pageNum * DUE_TIMES_PAGE_ROWS).map((train) => {
+                const lines = summarizeTrain(train.time, train.status);
+                return {
+                    name: `**T${train.trn} - ${dueInToString(train.time.dueIn)}**`,
+                    value: lines
+                }
+            })
+        )
+    }
+    return {
+        embeds: [embedBuilder],
+        components: getButtons(stationCode, pageNum, dueTimes.length <= DUE_TIMES_PAGE_ROWS)
+    };
+}
+
+async function getPlatformPage(
+    stationCode: string, platform: PlatformNumber, page = "first"
+) {
+    const embedBuilder = new EmbedBuilder();
+    let stationName: string;
+    let dueTimes: (BaseFilteredDueTime & { platform: PlatformNumber })[];
+    try {
+        if (["MMT", "MTS", "MTW", "MTE"].includes(stationCode)) {
+            stationCode = [1, 2].includes(platform) ? "MTS" : "MTW";
+            stationName = "Monument";
+        } else {
+            stationName = apiConstants.STATION_CODES[stationCode];
+        }
+        const response = await proxy.getPlatformDueTimes(
+            `${stationCode};${platform}`,
+            { props: [...PROPS, "dueTimes.platform"] }
+        ) as {
+            lastChecked: Date,
+            dueTimes: typeof dueTimes
+        };
+        embedBuilder.setFooter({ text: `Last checked: ${response.lastChecked.toLocaleDateString('en-GB')}` });
+        dueTimes = response.dueTimes;
+    } catch (e) {
+        return `An error occurred while fetching the due times: ${e}`;
+    }
+    const numPages = Math.ceil(dueTimes.length / DUE_TIMES_PAGE_ROWS);
+    let pageNum: number;
+    if (page === "first") pageNum = 1;
+    else if (page === "last") pageNum = numPages;
+    else pageNum = Math.min(+page, numPages);
+    embedBuilder.setTitle(`Next trains due at ${stationName} platform ${platform} - Page ${pageNum}/${numPages}`);
+    if (dueTimes.length === 0) {
+        embedBuilder.setDescription("*No trains due at this platform.*");
+    } else {
+        embedBuilder.addFields(
+            dueTimes.slice((pageNum - 1) * DUE_TIMES_PAGE_ROWS, pageNum * DUE_TIMES_PAGE_ROWS).map((train) => {
+                const lines = summarizeTrain(train.time, train.status);
+                return {
+                    name: `**T${train.trn} - ${dueInToString(train.time.dueIn)}**`,
+                    value: lines
+                }
+            })
+        )
+    }
+    return {
+        embeds: [embedBuilder],
+        components: getButtons(`${stationCode}:${platform}`, pageNum, dueTimes.length <= DUE_TIMES_PAGE_ROWS)
+    };
+}
+
 export default async function command(interaction: CommandInteraction) {
     const station = interaction.options.get('station', true).value as string;
     let stationCode = parseStationOption(station);
@@ -77,81 +206,31 @@ export default async function command(interaction: CommandInteraction) {
         return;
     }
     const platform = interaction.options.get('platform')?.value as PlatformNumber;
-
-    const embedBuilder = new EmbedBuilder();
-    let lastChecked: Date;
     if (platform) {
-        let stationName: string;
-        let dueTimes: (BaseFilteredDueTime & { platform: PlatformNumber })[];
-        try {
-            if (["MMT", "MTS", "MTW", "MTE"].includes(stationCode)) {
-                stationCode = [1, 2].includes(platform) ? "MTS" : "MTW";
-                stationName = "Monument";
-            } else {
-                stationName = apiConstants.STATION_CODES[stationCode];
-            }
-            const response = await proxy.getPlatformDueTimes(
-                `${stationCode};${platform}`,
-                { props: [...PROPS, "dueTimes.platform"] }
-            ) as {
-                lastChecked: Date,
-                dueTimes: typeof dueTimes
-            };
-            lastChecked = response.lastChecked;
-            dueTimes = response.dueTimes;
-        } catch (e) {
-            await interaction.reply(`An error occurred while fetching the due times: ${e}`);
-            return;
-        }
-        embedBuilder.setTitle(`Next trains due at ${stationName} platform ${platform}`);
-        if (dueTimes.length === 0) {
-            embedBuilder.setDescription("*No trains due at this platform.*");
-        } else {
-            embedBuilder.addFields(
-                dueTimes.map((train) => {
-                    const lines = summarizeTrain(train.time, train.status);
-                    return {
-                        name: `**T${train.trn} - ${dueInToString(train.time.dueIn)}**`,
-                        value: lines
-                    }
-                })
-            )
-        }
+        await interaction.reply(
+            await getPlatformPage(stationCode, platform)
+        );
     } else {
-        let dueTimes: BaseFilteredDueTime[];
-        try {
-            const response = await proxy.getStationDueTimes(
-                stationCode,
-                { props: PROPS }
-            ) as {
-                lastChecked: Date,
-                dueTimes: typeof dueTimes
-            };
-            lastChecked = response.lastChecked;
-            dueTimes = response.dueTimes;
-        } catch (e) {
-            await interaction.reply(`An error occurred while fetching the due times: ${e}`);
-            return;
-        }
-        embedBuilder.setTitle(`Next trains due at ${apiConstants.STATION_CODES[stationCode]}`);
-        if (dueTimes.length === 0) {
-            embedBuilder.setDescription("*No trains due at this station.*");
-        } else {
-            embedBuilder.addFields(
-                dueTimes.slice(0, 4).map((train) => {
-                    const lines = summarizeTrain(train.time, train.status);
-                    return {
-                        name: `**T${train.trn} - ${dueInToString(train.time.dueIn)}**`,
-                        value: lines
-                    }
-                })
-            )
-        }
+        await interaction.reply(
+            await getStationPage(stationCode)
+        );
     }
-    embedBuilder.setFooter({ text: `Last checked: ${lastChecked.toLocaleDateString('en-GB')}` });
-    await interaction.reply({ embeds: [embedBuilder] });
 }
 
 export async function autoCompleteOptions(focusedOption: AutocompleteFocusedOption) {
     return getStationOptions();
+}
+
+export async function button(interaction: ButtonInteraction, rest: string[]) {
+    if (rest.length === 3) {
+        await interaction.update(
+            await getPlatformPage(rest[0], +rest[1] as PlatformNumber, rest[2])
+        );
+    } else if (rest.length === 2) {
+        await interaction.update(
+            await getStationPage(rest[0], rest[1])
+        );
+    } else {
+        console.error(`Unknown button clicked: ${interaction.customId}`);
+    }
 }

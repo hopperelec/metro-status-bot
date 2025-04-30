@@ -14,7 +14,10 @@ import alertWhenActiveCommand, {
 import listActiveCommand from "./list-active-command";
 import timetableCommand, {autoCompleteOptions as timetableAutoComplete} from "./timetable-command";
 import {PROPERTY_CHOICES as HISTORY_PROPERTY_CHOICES} from "./status-history-command";
-import dueTimesCommand, {autoCompleteOptions as dueTimesAutoComplete} from "./due-times-command";
+import dueTimesCommand, {
+    autoCompleteOptions as dueTimesAutoComplete,
+    button as dueTimesButtons
+} from "./due-times-command";
 import {apiConstants} from "../cache";
 
 export async function registerCommands(client: Client) {
@@ -163,6 +166,10 @@ export async function handleInteraction(interaction: Interaction) {
             await subscribeTo(rest[0], interaction);
         } else if (action === 'history') {
             await historyButtons(interaction, rest);
+        } else if (action === 'due-times') {
+            await dueTimesButtons(interaction, rest);
+        } else {
+            console.error(`Unknown button clicked: ${interaction.customId}`);
         }
 
     } else if (interaction.isAutocomplete()) {

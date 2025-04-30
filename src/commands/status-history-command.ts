@@ -268,7 +268,7 @@ async function defaultFetch(
     };
 }
 
-async function getHistoryPage(
+async function getPage(
     trn: string, historyPropertyName: string, range: string = "last"
 ): Promise<BaseMessageOptionsWithPoll> {
     const historyProperty = PROPERTY_CHOICES[historyPropertyName];
@@ -386,7 +386,7 @@ export default async function command(interaction: CommandInteraction) {
         to.setMilliseconds(999);
     }
     await interaction.deferReply()
-    await interaction.editReply(await getHistoryPage(
+    await interaction.editReply(await getPage(
         interaction.options.get('trn').value as string,
         interaction.options.get('property').value as string,
         from || to ? `${from?.getTime() || ''}...${to?.getTime() || ''}` : undefined,
@@ -403,5 +403,5 @@ export async function button(interaction: ButtonInteraction, rest: string[]) {
         content: `Loading...`,
         components: []
     });
-    await interaction.editReply(await getHistoryPage(trn, property, extra.join(':')));
+    await interaction.editReply(await getPage(trn, property, extra.join(':')));
 }

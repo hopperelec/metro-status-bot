@@ -185,7 +185,6 @@ export async function announceTrainOnWrongDayDisappeared(train: TrainEmbedData, 
 }
 
 export async function announceTrainDuringNightHours(train: TrainEmbedData) {
-    // TODO: Debug this, because it never seems to trigger
     await mainChannel.send({
         content: `🌙 Train T${train.trn} is active during night hours.`,
         embeds: [trainEmbed(train)]

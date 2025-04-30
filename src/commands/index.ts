@@ -29,7 +29,8 @@ export async function registerCommands(client: Client) {
         {
             name: 'current-train-status',
             description: 'Get the current status of a train',
-            options: [TRN_OPTION]
+            options: [TRN_OPTION],
+            contexts: [0, 1, 2]
         },
         {
             name: 'train-status-history',
@@ -64,16 +65,19 @@ export async function registerCommands(client: Client) {
                     description: 'End time to show history up to, in HH:MM[:SS] format',
                     type: 3, // string
                 }
-            ]
+            ],
+            contexts: [0, 1, 2]
         },
         {
             name: 'alert-when-train-active',
             description: 'Get notified via a DM when a train appears',
-            options: [TRN_OPTION]
+            options: [TRN_OPTION],
+            contexts: [0, 1, 2]
         },
         {
             name: 'list-active-trains',
-            description: 'Get a list of active trains, and how many timetabled trains are missing'
+            description: 'Get a list of active trains, and how many timetabled trains are missing',
+            contexts: [0, 1, 2]
         },
         {
             name: 'train-timetable',
@@ -110,7 +114,8 @@ export async function registerCommands(client: Client) {
                     description: 'Date, in YYYY-MM-DD format. Defaults to today.',
                     type: 3, // string
                 }
-            ]
+            ],
+            contexts: [0, 1, 2]
         },
         {
             name: 'due-times',
@@ -130,7 +135,8 @@ export async function registerCommands(client: Client) {
                     minValue: 1,
                     maxValue: 4,
                 }
-            ]
+            ],
+            contexts: [0, 1, 2]
         }
     ]);
 }

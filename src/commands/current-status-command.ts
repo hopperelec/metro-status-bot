@@ -6,7 +6,7 @@ import {
     calculateDifferenceToTimetable, differenceToTimetableToString,
     expectedTrainStateToString,
     getExpectedTrainState,
-    timeDateToStr
+    timeDateToStr, timeNumbersToStr
 } from "../timetable";
 
 export default async function command(interaction: CommandInteraction) {
@@ -42,14 +42,13 @@ export default async function command(interaction: CommandInteraction) {
 
     if (train.status) {
         if (trainTimetable) {
-            const currentTime = timeDateToStr(new Date());
             let differenceAccordingToTimes: number = undefined;
             timesAPI: if (train.status.timesAPI) {
                 const parsedLocation = parseTimesAPILocation(train.status.timesAPI.lastEvent.location);
                 if (!parsedLocation) break timesAPI;
                 differenceAccordingToTimes = calculateDifferenceToTimetable(
                     trainTimetable,
-                    currentTime,
+                    timeDateToStr(train.status.timesAPI.lastEvent.time),
                     getStationCode(parsedLocation.station),
                     getStationCode(train.status.timesAPI.plannedDestinations[0].name)
                 );
@@ -60,7 +59,7 @@ export default async function command(interaction: CommandInteraction) {
                 if (!parsedLastSeen) break trainStatusesAPI;
                 differenceAccordingToStatuses = calculateDifferenceToTimetable(
                     trainTimetable,
-                    currentTime,
+                    timeNumbersToStr(parsedLastSeen.hours, parsedLastSeen.minutes),
                     getStationCode(parseLastSeen(train.status.trainStatusesAPI.lastSeen).station),
                     getStationCode(train.status.trainStatusesAPI.destination)
                 );
@@ -75,7 +74,7 @@ export default async function command(interaction: CommandInteraction) {
                     lines.push(`According to the times API, this train is ${differenceToTimetableToString(differenceAccordingToTimes)}`);
                 }
                 if (differenceAccordingToStatuses !== undefined) {
-                    lines.push(`According to the statuses API, this train is ${differenceToTimetableToString(differenceAccordingToTimes)}`);
+                    lines.push(`According to the statuses API, this train is ${differenceToTimetableToString(differenceAccordingToStatuses)}`);
                 }
             }
         }

@@ -111,7 +111,15 @@ export function getExpectedTrainState(trainTimetable: TrainTimetable, time: stri
     const previousEntry = fullTimetable[previousEntryIndex];
     const station1 = (previousEntry.station === "FORMS" ? fullTimetable[previousEntryIndex - 1] : previousEntry).station;
     const nextStation = fullTimetable[previousEntryIndex + 1].station;
-    const station2 = nextStation === "FORMS" ? fullTimetable[previousEntryIndex + 2].station : nextStation;
+    // TODO: Fix error
+    // There has been an error with `fullTimetable[previousEntryIndex + 1]` being undefined.
+    // I'm not sure how this is possible, since it would mean previousEntry was
+    // the very last entry, which should have already been covered by the `state: 'ending'` check.
+    let station2: string;
+    if (nextStation === "FORMS") {
+        const nextNextEntry = fullTimetable[previousEntryIndex + 2];
+        station2 = nextNextEntry === undefined ? trainTimetable.arrival.place : nextNextEntry.station;
+    } else station2 = nextStation;
     return {
         station1,
         station2,

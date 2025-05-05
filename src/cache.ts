@@ -6,7 +6,7 @@ import {
 import {DayType, getDayType, whenIsNextDay} from "./timetable";
 import {proxy, updateActivity} from "./bot";
 
-const EXAMPLE_WEEKDAY = new Date(2024, 0, 1);
+const EXAMPLE_WEEKDAY = new Date(2024, 0, 8);
 const EXAMPLE_SATURDAY = new Date(2024, 0, 6);
 const EXAMPLE_SUNDAY = new Date(2024, 0, 7);
 

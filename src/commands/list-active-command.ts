@@ -1,7 +1,7 @@
 import {CommandInteraction, EmbedBuilder} from "discord.js";
 import {proxy} from "../bot";
 import {FullTrainsResponse, parseLastSeen, parseTimesAPILocation} from "metro-api-client";
-import {calculateDifferenceToTimetable, getTimetabledTrains, timeDateToStr, timeNumbersToStr} from "../timetable";
+import {calculateDifferenceToTimetable, timeDateToStr, timeNumbersToStr} from "../timetable";
 import {getStationCode, getTodaysTimetable} from "../cache";
 
 function listTrains(trains: string[]) {
@@ -12,7 +12,8 @@ export default async function command(interaction: CommandInteraction) {
     // TODO: This only needs to know in which APIs it is active, might need to add an option in the proxy for presence in props
     const activeTrains = await proxy.getTrains() as FullTrainsResponse;
 
-    const timetabledTrains = getTimetabledTrains(activeTrains.lastChecked);
+    const todaysTimetable = await getTodaysTimetable();
+    const timetabledTrains = Object.keys(todaysTimetable);
     const activeTrainsFromTimesAPI: string[] = [];
     const activeTrainsFromTrainStatusesAPI: string[] = [];
     const lateTrains: {
@@ -26,8 +27,12 @@ export default async function command(interaction: CommandInteraction) {
     const missingTrains = timetabledTrains.filter(trn => !activeTrains.trains[trn]);
     const extraTrains: string[] = [];
     for (const [trn, data] of Object.entries(activeTrains.trains)) {
+        if (!(trn in todaysTimetable)) {
+            extraTrains.push(trn);
+            continue;
+        }
+        const trainTimetable = todaysTimetable[trn];
         const secsOffTimetable: number[] = [];
-        const trainTimetable = (await getTodaysTimetable())[trn];
         if (data.status.timesAPI) {
             activeTrainsFromTimesAPI.push(trn);
             const parsedLocation = parseTimesAPILocation(data.status.timesAPI.lastEvent.location);
@@ -69,7 +74,6 @@ export default async function command(interaction: CommandInteraction) {
                 possibleDelays: minsOffTimetable
             });
         }
-        if (!timetabledTrains.includes(trn)) extraTrains.push(trn);
     }
 
     lateTrains.sort((a, b) => Math.max(...a.possibleDelays) - Math.max(...b.possibleDelays));

@@ -35,10 +35,9 @@ import {
     ActiveTrainHistoryStatus,
     CollatedTrain, FullNewTrainsHistoryPayload,
     ParsedLastSeen, ParsedTimesAPILocation, parseLastSeen, parseTimesAPILocation, PlatformNumber, TimesApiData,
-    TrainStatusesApiData, TrainTimetable
+    TrainStatusesApiData
 } from "metro-api-client";
 import {
-    timeNumbersToStr,
     getDayType,
     getExpectedTrainState,
     getFlatTimetableForTRN,
@@ -180,43 +179,27 @@ async function shouldAnnounceUntimetabledActivity(
         curr.status.timesAPI?.plannedDestinations[0].name === prev.status.timesAPI?.plannedDestinations[0].name
     ) return;
 
-    const dateInTimes = curr.status.timesAPI?.lastEvent.time;
+    const trainTimetable = (await getTodaysTimetable())[trn];
+    if (!trainTimetable) return "wrong-day";
 
-    let dateInStatuses: Date;
+    if (curr.status.timesAPI) {
+        const dateInTimes = curr.status.timesAPI.lastEvent.time;
+        const expectedStateInTimes =
+            getExpectedTrainState(trainTimetable, timeDateToStr(dateInTimes)).state;
+        if (expectedStateInTimes === "not-started" || expectedStateInTimes === "ended")
+            return "night-hours";
+    }
+
     if (parsedLastSeen) {
-        dateInStatuses = new Date(curr.date);
+        const dateInStatuses = new Date(curr.date);
         dateInStatuses.setHours(parsedLastSeen.hours);
         dateInStatuses.setMinutes(parsedLastSeen.minutes);
         if (parsedLastSeen.hours - curr.date.getHours() >= 12) {
             dateInStatuses.setDate(dateInStatuses.getDate() - 1);
         }
-    }
-
-    let timetableInTimes: TrainTimetable | undefined;
-    if (dateInTimes) {
-        timetableInTimes = weekTimetable[getDayType(dateInTimes)][trn];
-        if (!timetableInTimes)
-            return "wrong-day"
-    }
-
-    let timetableInStatuses: TrainTimetable | undefined;
-    if (dateInStatuses) {
-        timetableInStatuses = weekTimetable[getDayType(dateInStatuses)][trn];
-        if (!timetableInStatuses)
-            return "wrong-day"
-    }
-
-    if (timetableInTimes) {
         const expectedStateInTimes =
-            getExpectedTrainState(timetableInTimes, timeDateToStr(dateInTimes)).state;
+            getExpectedTrainState(trainTimetable, timeDateToStr(dateInStatuses)).state;
         if (expectedStateInTimes === "not-started" || expectedStateInTimes === "ended")
-            return "night-hours";
-    }
-
-    if (timetableInStatuses) {
-        const expectedStateInStatuses =
-            getExpectedTrainState(timetableInStatuses, timeNumbersToStr(parsedLastSeen.hours, parsedLastSeen.minutes)).state;
-        if (expectedStateInStatuses === "not-started" || expectedStateInStatuses === "ended")
             return "night-hours";
     }
 }

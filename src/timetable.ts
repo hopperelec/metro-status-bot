@@ -109,17 +109,35 @@ export function getExpectedTrainState(trainTimetable: TrainTimetable, time: stri
 
     const previousEntryIndex = fullTimetable.findIndex(({ time: t }) => compareTimes(t, time) >= 0);
     const previousEntry = fullTimetable[previousEntryIndex];
-    const station1 = (previousEntry.station === "FORMS" ? fullTimetable[previousEntryIndex - 1] : previousEntry).station;
-    const nextStation = fullTimetable[previousEntryIndex + 1].station;
-    // TODO: Fix error
-    // There has been an error with `fullTimetable[previousEntryIndex + 1]` being undefined.
-    // I'm not sure how this is possible, since it would mean previousEntry was
-    // the very last entry, which should have already been covered by the `state: 'ending'` check.
-    let station2: string;
-    if (nextStation === "FORMS") {
-        const nextNextEntry = fullTimetable[previousEntryIndex + 2];
-        station2 = nextNextEntry === undefined ? trainTimetable.arrival.place : nextNextEntry.station;
-    } else station2 = nextStation;
+
+    let station1 = previousEntry.station;
+    if (station1 === "FORMS") {
+        if (previousEntryIndex === 0) {
+            return {
+                station1: trainTimetable.departure.place,
+                station2: fullTimetable[1].station,
+                destination: previousEntry.destination,
+                state: 'starting'
+            }
+        }
+        station1 = fullTimetable[previousEntryIndex - 1].station;
+    }
+
+    const nextEntryIndex = previousEntryIndex + 1;
+    const nextEntry = fullTimetable[nextEntryIndex];
+    let station2 = nextEntry.station;
+    if (station2 === "FORMS") {
+        if (nextEntryIndex === fullTimetable.length - 1) {
+            return {
+                station1,
+                station2: trainTimetable.arrival.place,
+                destination: nextEntry.destination,
+                state: 'ending'
+            }
+        }
+        station2 = fullTimetable[nextEntryIndex + 1].station;
+    }
+
     return {
         station1,
         station2,

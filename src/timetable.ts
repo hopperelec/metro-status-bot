@@ -107,7 +107,7 @@ export function getExpectedTrainState(trainTimetable: TrainTimetable, time: stri
         state: 'ending'
     };
 
-    const previousEntryIndex = fullTimetable.findIndex(({ time: t }) => compareTimes(t, time) >= 0);
+    const previousEntryIndex = fullTimetable.findIndex(({ time: t }) => compareTimes(time, t) >= 0);
     const previousEntry = fullTimetable[previousEntryIndex];
 
     let station1 = previousEntry.station;

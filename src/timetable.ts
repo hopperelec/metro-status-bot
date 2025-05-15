@@ -107,41 +107,41 @@ export function getExpectedTrainState(trainTimetable: TrainTimetable, time: stri
         state: 'ending'
     };
 
-    const previousEntryIndex = fullTimetable.findIndex(({ time: t }) => compareTimes(time, t) >= 0);
-    const previousEntry = fullTimetable[previousEntryIndex];
+    let nextEntryIndex = fullTimetable.findIndex(({ time: t }) => compareTimes(time, t) <= 0);
+    const nextEntry = fullTimetable[nextEntryIndex];
+    let prevEntryIndex = nextEntryIndex - 1;
+    const prevEntry = fullTimetable[prevEntryIndex];
 
-    let station1 = previousEntry.station;
+    let station1 = prevEntry.station;
     if (station1 === "FORMS") {
-        if (previousEntryIndex === 0) {
+        if (prevEntryIndex-- === -1) {
             return {
                 station1: trainTimetable.departure.place,
-                station2: fullTimetable[1].station,
-                destination: previousEntry.destination,
+                station2: nextEntry.station,
+                destination: prevEntry.destination,
                 state: 'starting'
             }
         }
-        station1 = fullTimetable[previousEntryIndex - 1].station;
+        station1 = fullTimetable[prevEntryIndex].station;
     }
 
-    const nextEntryIndex = previousEntryIndex + 1;
-    const nextEntry = fullTimetable[nextEntryIndex];
     let station2 = nextEntry.station;
     if (station2 === "FORMS") {
-        if (nextEntryIndex === fullTimetable.length - 1) {
+        if (nextEntryIndex++ === fullTimetable.length) {
             return {
-                station1,
+                station1: prevEntry.station,
                 station2: trainTimetable.arrival.place,
                 destination: nextEntry.destination,
                 state: 'ending'
             }
         }
-        station2 = fullTimetable[nextEntryIndex + 1].station;
+        station2 = fullTimetable[nextEntryIndex].station;
     }
 
     return {
         station1,
         station2,
-        destination: previousEntry.destination,
+        destination: prevEntry.destination,
         state: apiConstants.NIS_STATIONS.includes(station1) || apiConstants.NIS_STATIONS.includes(station2)
             ? 'nis'
             : 'active'

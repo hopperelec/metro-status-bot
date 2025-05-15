@@ -537,7 +537,8 @@ export async function startMonitoring() {
         async onHeartbeatError(payload) {
             await setConnected();
             lastErrors.add(payload.message);
-            if (ongoingErrors.add(payload.message)) {
+            if (!ongoingErrors.has(payload.message)) {
+                ongoingErrors.add(payload.message)
                 await announceHeartbeatError(payload);
             }
         },

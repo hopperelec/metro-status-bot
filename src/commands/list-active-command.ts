@@ -45,7 +45,7 @@ export default async function command(interaction: CommandInteraction) {
                 secsOffTimetable.push(calculateDifferenceToTimetable(
                     trainTimetable,
                     timeDateToStr(data.status.timesAPI.lastEvent.time),
-                    getStationCode(parsedLocation.station),
+                    getStationCode(parsedLocation.station, parsedLocation.platform),
                     getStationCode(data.status.timesAPI.plannedDestinations[0].name)
                 ));
             }
@@ -56,7 +56,7 @@ export default async function command(interaction: CommandInteraction) {
                 secsOffTimetable.push(calculateDifferenceToTimetable(
                     trainTimetable,
                     timeNumbersToStr(parsedLastSeen.hours, parsedLastSeen.minutes),
-                    getStationCode(parsedLastSeen.station),
+                    getStationCode(parsedLastSeen.station, parsedLastSeen.platform),
                     getStationCode(data.status.trainStatusesAPI.destination)
                 ));
             }

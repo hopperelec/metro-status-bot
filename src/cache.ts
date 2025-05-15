@@ -1,7 +1,7 @@
 import {
     ActiveTrainHistoryEntry,
     ApiConstants, compareTimes as _compareTimes, FullTrainsResponse,
-    MetroApiClient, TrainTimetable
+    MetroApiClient, PlatformNumber, TrainTimetable
 } from "metro-api-client";
 import {DayType, getDayType, whenIsNextDay} from "./timetable";
 import {proxy, updateActivity} from "./bot";
@@ -66,9 +66,14 @@ export async function refreshCache(proxy: MetroApiClient) {
     await updateActivity(Object.keys(trainsResponse.trains).length);
 }
 
-export function getStationCode(station: string) {
+export function getStationCode(station: string, platform?: PlatformNumber) {
+    station = station.toLowerCase();
+    if (station === "monument") {
+        if (platform === 1 || platform === 2) return "MTS";
+        if (platform === 3 || platform === 4) return "MTW";
+    }
     for (const [code, name] of Object.entries(apiConstants.STATION_CODES)) {
-        if (name.toLowerCase() === station.toLowerCase()) {
+        if (name.toLowerCase() === station) {
             if (code in apiConstants.NIS_STATIONS) return;
             return code;
         }

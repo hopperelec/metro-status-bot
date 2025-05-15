@@ -1,5 +1,5 @@
 import {ActionRowBuilder, AutocompleteFocusedOption, ButtonBuilder, ButtonStyle, CommandInteraction} from "discord.js";
-import {getStationCode, lastHistoryEntries, getTodaysTimetable, lastHeartbeat, setLastHeartbeat} from "../cache";
+import {getStationCode, lastHistoryEntries, getTodaysTimetable, setLastHeartbeat} from "../cache";
 import {FullTrainResponse, parseLastSeen, parseTimesAPILocation} from "metro-api-client";
 import {proxy, trainEmbed} from "../bot";
 import {
@@ -49,7 +49,7 @@ export default async function command(interaction: CommandInteraction) {
                 differenceAccordingToTimes = calculateDifferenceToTimetable(
                     trainTimetable,
                     timeDateToStr(train.status.timesAPI.lastEvent.time),
-                    getStationCode(parsedLocation.station),
+                    getStationCode(parsedLocation.station, parsedLocation.platform),
                     getStationCode(train.status.timesAPI.plannedDestinations[0].name)
                 );
             }
@@ -60,7 +60,7 @@ export default async function command(interaction: CommandInteraction) {
                 differenceAccordingToStatuses = calculateDifferenceToTimetable(
                     trainTimetable,
                     timeNumbersToStr(parsedLastSeen.hours, parsedLastSeen.minutes),
-                    getStationCode(parseLastSeen(train.status.trainStatusesAPI.lastSeen).station),
+                    getStationCode(parsedLastSeen.station, parsedLastSeen.platform),
                     getStationCode(train.status.trainStatusesAPI.destination)
                 );
             }

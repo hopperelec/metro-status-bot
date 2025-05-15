@@ -246,8 +246,10 @@ export async function announceTrainAtUnrecognisedPlatform(train: TrainEmbedData)
 export async function announceTrainAtStJamesP2(train: TrainEmbedData) {
     await mainChannel.send({
         content: `🤔 Train T${train.trn} is at St James platform 2. ` +
-            'This usually means it is ending service ' +
-            'or that there is a Not In Service train on platform 1.',
+            'This usually means either:\n' +
+            '- it is ending service\n' +
+            '- there is a Not In Service train on platform 1.\n' +
+            '- there is ongoing maintenance work on platform 1.',
         embeds: [trainEmbed(train)]
     });
 }

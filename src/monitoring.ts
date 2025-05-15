@@ -86,7 +86,7 @@ async function getFullEmbedData({ trn, curr }: TrainCheckData): Promise<TrainEmb
             }
         };
         fullStatus = {
-            ...curr,
+            ...curr.status,
             timesAPI: {
                 ...curr.status.timesAPI,
                 ...response.status.timesAPI,

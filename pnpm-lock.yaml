@@ -4,9 +4,6 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-overrides:
-  metro-api-client: link:C:/Users/hoppe/AppData/Local/pnpm/global/5/node_modules/metro-api-client
-
 importers:
 
   .:
@@ -18,8 +15,8 @@ importers:
         specifier: ^16.4.7
         version: 16.4.7
       metro-api-client:
-        specifier: link:C:/Users/hoppe/AppData/Local/pnpm/global/5/node_modules/metro-api-client
-        version: link:C:/Users/hoppe/AppData/Local/pnpm/global/5/node_modules/metro-api-client
+        specifier: ^1.0.0
+        version: 1.0.0
     devDependencies:
       tslib:
         specifier: ^2.8.1
@@ -249,6 +246,14 @@ packages:
     engines: {node: '>=18'}
     hasBin: true
 
+  eventsource-client@1.1.3:
+    resolution: {integrity: sha512-6GJGePDMxin/6VH1Dex7RqnZRguweO1BVKhXpBYwKcQbVLOZPLfeDr9vYSb9ra88kjs0NpT8FaEDz5rExedDkg==}
+    engines: {node: '>=18.0.0'}
+
+  eventsource-parser@3.0.2:
+    resolution: {integrity: sha512-6RxOBZ/cYgd8usLwsEl+EC09Au/9BcmCKYF2/xbml6DNczf7nv0MQb+7BA2F+li6//I+28VNlQR37XfQtcAJuA==}
+    engines: {node: '>=18.0.0'}
+
   fast-deep-equal@3.1.3:
     resolution: {integrity: sha512-f3qQ9oQy9j2AhBe/H9VC91wLmKBCCU/gDOnKNAYG5hswO7BLKj09Hc5HYNz9cGI++xlpDCIgDaitVs03ATR84Q==}
 
@@ -268,6 +273,9 @@ packages:
 
   magic-bytes.js@1.10.0:
     resolution: {integrity: sha512-/k20Lg2q8LE5xiaaSkMXk4sfvI+9EGEykFS4b0CHHGWqDYU0bGUFSwchNOMA56D7TCs9GwVTkqe9als1/ns8UQ==}
+
+  metro-api-client@1.0.0:
+    resolution: {integrity: sha512-VDohpFp1xFogvFJe+17sOrPpJaOweho9hi2IipikzEX8aJ0w6vSbFBfUKw27fizRQ9xxaohe7I1snpcNzmCOMw==}
 
   resolve-pkg-maps@1.0.0:
     resolution: {integrity: sha512-seS2Tj26TBVOC2NIc2rOe2y2ZO7efxITtLZcGSOnHHNOQ7CkiUBfw0Iw2ck6xkIhPwLhKNLS8BO+hEpngQlqzw==}
@@ -500,6 +508,12 @@ snapshots:
       '@esbuild/win32-ia32': 0.25.0
       '@esbuild/win32-x64': 0.25.0
 
+  eventsource-client@1.1.3:
+    dependencies:
+      eventsource-parser: 3.0.2
+
+  eventsource-parser@3.0.2: {}
+
   fast-deep-equal@3.1.3: {}
 
   fsevents@2.3.3:
@@ -514,6 +528,10 @@ snapshots:
   lodash@4.17.21: {}
 
   magic-bytes.js@1.10.0: {}
+
+  metro-api-client@1.0.0:
+    dependencies:
+      eventsource-client: 1.1.3
 
   resolve-pkg-maps@1.0.0: {}
 

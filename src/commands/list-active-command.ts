@@ -33,7 +33,7 @@ export default async function command(interaction: CommandInteraction) {
         if (data.status.trainStatusesAPI) {
             activeTrainsFromTrainStatusesAPI.push(trn);
         }
-        if (!(trn in timetabledTrains)) {
+        if (!timetabledTrains.includes(trn)) {
             extraTrains.push(trn);
             continue;
         }

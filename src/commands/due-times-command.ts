@@ -3,7 +3,7 @@ import {
     AutocompleteFocusedOption, ButtonBuilder,
     ButtonInteraction, ButtonStyle,
     CommandInteraction,
-    EmbedBuilder
+    EmbedBuilder, InteractionUpdateOptions
 } from "discord.js";
 import {
     DueTime,
@@ -222,15 +222,22 @@ export async function autoCompleteOptions(focusedOption: AutocompleteFocusedOpti
 }
 
 export async function button(interaction: ButtonInteraction, rest: string[]) {
+    let page: string | InteractionUpdateOptions;
     if (rest.length === 3) {
-        await interaction.update(
-            await getPlatformPage(rest[0], +rest[1] as PlatformNumber, rest[2])
-        );
+        page = await getPlatformPage(rest[0], +rest[1] as PlatformNumber, rest[2]);
     } else if (rest.length === 2) {
-        await interaction.update(
-            await getStationPage(rest[0], rest[1])
-        );
+        page = await getStationPage(rest[0], rest[1]);
     } else {
         console.error(`Unknown button clicked: ${interaction.customId}`);
+        return;
+    }
+    if (interaction.user === interaction.message.interactionMetadata.user) {
+        await interaction.update(page);
+    } else {
+        if (typeof page === "object") {
+            await interaction.reply({ ...page, flags: ["Ephemeral"] });
+        } else {
+            await interaction.reply({ content: page, flags: ["Ephemeral"] });
+        }
     }
 }

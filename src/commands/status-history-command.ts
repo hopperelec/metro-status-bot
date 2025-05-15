@@ -399,9 +399,17 @@ export function autoCompleteOptions(focusedOption: AutocompleteFocusedOption) {
 
 export async function button(interaction: ButtonInteraction, rest: string[]) {
     const [trn, property, ...extra] = rest;
-    await interaction.update({
-        content: `Loading...`,
-        components: []
-    });
-    await interaction.editReply(await getPage(trn, property, extra.join(':')));
+    if (interaction.user === interaction.message.interactionMetadata.user) {
+        await interaction.update({
+            content: `Loading...`,
+            components: []
+        });
+        await interaction.editReply(await getPage(trn, property, extra.join(':')));
+    } else {
+        const reply = await interaction.reply({
+            content: `Loading...`,
+            flags: ["Ephemeral"],
+        });
+        await reply.edit(await getPage(trn, property, extra.join(':')));
+    }
 }

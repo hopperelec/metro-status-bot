@@ -127,7 +127,7 @@ client.once(Events.ClientReady, async () => {
 
 client.on(Events.InteractionCreate, handleInteraction);
 
-type AlertSubscription = {
+export type AlertSubscription = {
     userId: string;
     trn: string;
 }
@@ -304,8 +304,7 @@ export async function alertNowActive(subscription: AlertSubscription, train: Tra
     await user.send({
         content: message,
         embeds: [trainEmbed(train)]
-    })
-    alertSubscriptions.splice(alertSubscriptions.indexOf(subscription), 1);
+    });
 }
 
 // Train statuses API

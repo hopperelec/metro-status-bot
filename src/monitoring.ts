@@ -545,13 +545,9 @@ export async function startMonitoring() {
             await setConnected();
             if (
                 payload.api === "timesAPI" &&
-                payload.message === "Unexpected end of JSON input" &&
-                payload.date.getHours() === 3 &&
-                payload.date.getMinutes() < 10
+                payload.message === "Unexpected end of JSON input"
             ) {
-                // The times API seems to restart at 3AM,
-                // and it can sometimes take several minutes
-                // for it to come back online.
+                // This error happens too often, particularly at 3AM
                 return;
             }
             lastErrors.add(payload.message);

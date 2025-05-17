@@ -115,7 +115,7 @@ async function getStationPage(
             lastChecked: Date,
             dueTimes: typeof dueTimes
         };
-        embedBuilder.setFooter({ text: `Last checked: ${response.lastChecked.toLocaleDateString('en-GB')}` });
+        embedBuilder.setFooter({ text: `Last checked: ${response.lastChecked.toLocaleTimeString('en-GB')}` });
         dueTimes = response.dueTimes;
     } catch (e) {
         return `An error occurred while fetching the due times: ${e}`;
@@ -165,7 +165,7 @@ async function getPlatformPage(
             lastChecked: Date,
             dueTimes: typeof dueTimes
         };
-        embedBuilder.setFooter({ text: `Last checked: ${response.lastChecked.toLocaleDateString('en-GB')}` });
+        embedBuilder.setFooter({ text: `Last checked: ${response.lastChecked.toLocaleTimeString('en-GB')}` });
         dueTimes = response.dueTimes;
     } catch (e) {
         return `An error occurred while fetching the due times: ${e}`;

@@ -92,7 +92,7 @@ export function getExpectedTrainState(trainTimetable: TrainTimetable, time: stri
     const fullTimetable = getFlatTimetableForTRN(trainTimetable, true);
 
     const firstEntry = fullTimetable[0];
-    if (compareTimes(time, firstEntry.time) < 0) return {
+    if (compareTimes(time, firstEntry.time) <= 0) return {
         station1: trainTimetable.departure.place,
         station2: firstEntry.station === "FORMS" ? fullTimetable[1].station : firstEntry.station,
         destination: firstEntry.station,

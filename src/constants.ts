@@ -5,6 +5,7 @@ export const DUE_TIMES_PAGE_ROWS = 4;
 export const DEFAULT_MISSING_THRESHOLD = 2; // How many minutes a train must be missing before announcing it
 export const MULTIPLE_TRAINS_THRESHOLD = 4; // How many trains must appear or disappear simultaneously to announce them as a group
 export const TRAIN_DIRECTIONS: TrainDirection[] = ["in","out"];
+export const MAX_PLANNED_DESTINATIONS = 5; // Maximum number of planned destinations to show
 
 export const API_CODES = {
     timesAPI: "the times API",

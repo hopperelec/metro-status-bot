@@ -9,7 +9,7 @@ import {
 } from "metro-api-client";
 import {apiConstants, lastHeartbeat} from "./cache";
 import {startMonitoring} from "./monitoring";
-import {API_CODES} from "./constants";
+import {API_CODES, MAX_PLANNED_DESTINATIONS} from "./constants";
 
 config();
 const MAIN_CHANNEL_ID = process.env.MAIN_CHANNEL_ID;
@@ -58,6 +58,16 @@ export function trainEmbed(train: TrainEmbedData) {
 
     if (train.status.timesAPI) {
         const data = train.status.timesAPI;
+        let plannedDestinationsLines = data.plannedDestinations
+            .map(dest => `${dest.name} from ${renderPlatformCode(dest.from.platformCode)} at ${dest.from.time.toLocaleTimeString('en-GB')}`);
+        if (plannedDestinationsLines.length > MAX_PLANNED_DESTINATIONS) {
+            const CUTOFF = Math.floor(MAX_PLANNED_DESTINATIONS / 2);
+            plannedDestinationsLines = [
+                ...plannedDestinationsLines.slice(0, CUTOFF),
+                `...${plannedDestinationsLines.length - CUTOFF} more...`,
+                ...plannedDestinationsLines.slice(plannedDestinationsLines.length - CUTOFF)
+            ];
+        }
         embed.addFields(
             {
                 name: "⌛ Last seen",
@@ -65,14 +75,23 @@ export function trainEmbed(train: TrainEmbedData) {
             },
             {
                 name: "⌛ Planned destinations",
-                value: data.plannedDestinations.map(dest => `${dest.name} from ${renderPlatformCode(dest.from.platformCode)} at ${dest.from.time.toLocaleTimeString('en-GB')}`).join("\n")
+                value: plannedDestinationsLines.join("\n")
             }
         );
         if ('nextPlatforms' in data) {
+            const nextPlatformStrings = data.nextPlatforms.map(nextPlatform => renderPlatformCode(nextPlatform.code));
+            let nextPlatformsString = nextPlatformStrings.join(", ");
+            let endIndex = nextPlatformStrings.length - 1;
+            while (nextPlatformsString.length > 1024) { // Discord embed field value length limit
+                nextPlatformsString = [
+                    ...nextPlatformStrings.slice(0, endIndex--),
+                    `... ${nextPlatformStrings.length - endIndex - 1} more`
+                ].join(", ");
+            }
             embed.addFields(
                 {
                     name: "⌛ Next Platforms",
-                    value: data.nextPlatforms.map(nextPlatform => renderPlatformCode(nextPlatform.code)).join(", ")
+                    value: nextPlatformsString,
                 }
             );
         }
@@ -107,7 +126,9 @@ const PLATFORM_CODE_REGEX = /^(?<station>[A-Z]{3});(?<platform>[1-4])$/;
 function renderPlatformCode(code: string) {
     const parsed = code.match(PLATFORM_CODE_REGEX);
     if (!parsed?.groups) return code;
-    return `${apiConstants.STATION_CODES[parsed.groups.station]} P${parsed.groups.platform}`;
+    const stationName = apiConstants.STATION_CODES[parsed.groups.station];
+    if (!stationName) return code;
+    return `${stationName} P${parsed.groups.platform}`;
 }
 
 function listTrns(trns: Set<string>) {
@@ -120,6 +141,46 @@ client.once(Events.ClientReady, async () => {
     if (MAIN_CHANNEL_ID) {
         mainChannel = await client.channels.fetch(MAIN_CHANNEL_ID) as TextChannel;
         if (mainChannel) {
+            setTimeout(async () => {
+                await mainChannel.send({
+                    content: `hi guys this is just a test, ignore this message`,
+                    embeds: [
+                        trainEmbed({
+                            trn: "1234",
+                            status: {
+                                timesAPI: {
+                                    lastEvent: {
+                                        type: "DEPARTED",
+                                        location: "Monument Platform 1",
+                                        time: new Date(),
+                                    },
+                                    plannedDestinations: [
+                                        {
+                                            name: "South Shields",
+                                            from: {
+                                                platformCode: "MMT;1",
+                                                time: new Date()
+                                            }
+                                        }
+                                    ],
+                                    nextPlatforms: [
+                                        {
+                                            code: "SHI;1",
+                                            time: {
+                                                dueIn: 5,
+                                                actualPredictedTime: new Date(),
+                                                actualScheduledTime: new Date()
+                                            }
+                                        }
+                                    ]
+                                }
+                            },
+                            date: new Date()
+                        })
+                    ]
+                });
+            }, 2000);
+
             await startMonitoring();
         } else {
             console.warn("Could not connect to main channel, will not monitor trains.");

@@ -141,46 +141,6 @@ client.once(Events.ClientReady, async () => {
     if (MAIN_CHANNEL_ID) {
         mainChannel = await client.channels.fetch(MAIN_CHANNEL_ID) as TextChannel;
         if (mainChannel) {
-            setTimeout(async () => {
-                await mainChannel.send({
-                    content: `hi guys this is just a test, ignore this message`,
-                    embeds: [
-                        trainEmbed({
-                            trn: "1234",
-                            status: {
-                                timesAPI: {
-                                    lastEvent: {
-                                        type: "DEPARTED",
-                                        location: "Monument Platform 1",
-                                        time: new Date(),
-                                    },
-                                    plannedDestinations: [
-                                        {
-                                            name: "South Shields",
-                                            from: {
-                                                platformCode: "MMT;1",
-                                                time: new Date()
-                                            }
-                                        }
-                                    ],
-                                    nextPlatforms: [
-                                        {
-                                            code: "SHI;1",
-                                            time: {
-                                                dueIn: 5,
-                                                actualPredictedTime: new Date(),
-                                                actualScheduledTime: new Date()
-                                            }
-                                        }
-                                    ]
-                                }
-                            },
-                            date: new Date()
-                        })
-                    ]
-                });
-            }, 2000);
-
             await startMonitoring();
         } else {
             console.warn("Could not connect to main channel, will not monitor trains.");

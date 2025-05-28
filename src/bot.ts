@@ -95,7 +95,11 @@ export function trainEmbed(train: TrainEmbedData) {
 }
 
 function prevTrainStatusEmbed(train: TrainEmbedData) {
-    return trainEmbed(train).setTitle(`T${train.trn} (previous status)`)
+    if (train.status)
+        return trainEmbed(train).setTitle(`T${train.trn} (previous status)`)
+    return new EmbedBuilder()
+        .setTitle(`T${train.trn} (previous status)`)
+        .setDescription("No previous status available.");
 }
 
 const PLATFORM_CODE_REGEX = /^(?<station>[A-Z]{3});(?<platform>[1-4])$/;

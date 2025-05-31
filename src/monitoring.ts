@@ -362,31 +362,14 @@ async function checkActiveTrain(checkData: TrainCheckData) {
 async function handleDisappearedTrain(trn: string, prev: Omit<ActiveTrainHistoryEntry, "active">) {
     const dayType = getDayType(lastHeartbeat);
     const trainTimetable = weekTimetable[dayType][trn];
-    if (!trainTimetable) {
+    if (trainTimetable) {
+        if (getExpectedTrainState(trainTimetable, timeDateToStr(lastHeartbeat)).state === "active") {
+            await announceDisappearedTrain({trn, ...prev});
+            missingTrains.set(trn, { announced: true, whenToForget: whenIsNextDay(lastHeartbeat) });
+        }
+    } else {
         await announceTrainOnWrongDayDisappeared({trn, ...prev}, dayType);
-        return;
     }
-
-    if (getExpectedTrainState(trainTimetable, timeDateToStr(lastHeartbeat)).state !== "active") return;
-
-    // TODO: Temp, just to see if the missing threshold is still needed
-    await announceDisappearedTrain({trn, ...prev});
-    missingTrains.set(trn, { announced: true, whenToForget: whenIsNextDay(lastHeartbeat) });
-
-    // const whenToAnnounce = new Date(lastHeartbeat.getTime() + MISSING_THRESHOLD * 60000);
-    // if (whenToAnnounce < lastHeartbeat) {
-    //     await announceDisappearedTrain({trn, ...prev});
-    //     missingTrains.set(trn, { announced: true, whenToForget: whenIsNextDay(lastHeartbeat) });
-    // } else {
-    //     const fullTimetable = getFlatTimetableForTRN(trainTimetable);
-    //     if (compareTimes(timeDateToStr(whenToAnnounce), fullTimetable[fullTimetable.length - 1].time) < 0) {
-    //         missingTrains.set(trn, {
-    //             announced: false,
-    //             prevStatus: prev,
-    //             whenToAnnounce
-    //         });
-    //     }
-    // }
 }
 
 async function handleMultipleDisappearedTrains(trns: Set<string>, isAllTrains: boolean) {

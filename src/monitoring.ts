@@ -172,12 +172,8 @@ async function shouldAnnounceUntimetabledActivity(
 ) {
     const { trn, curr, prev } = checkData;
 
-    // Don't repeat these announcements unless the train's current destination changes
-    if (
-        prev?.status &&
-        curr.status.trainStatusesAPI?.destination === prev.status.trainStatusesAPI?.destination &&
-        curr.status.timesAPI?.plannedDestinations[0].name === prev.status.timesAPI?.plannedDestinations[0].name
-    ) return;
+    // Only announce when the train first becomes active
+    if (prev?.status) return;
 
     const trainTimetable = (await getTodaysTimetable())[trn];
     if (!trainTimetable) return "wrong-day";

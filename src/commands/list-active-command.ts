@@ -104,5 +104,5 @@ export default async function command(interaction: CommandInteraction) {
                 value: listTrains(extraTrains)
             }
         );
-    await interaction.reply({ embeds: [embed] });
+    await interaction.reply({ embeds: [embed] }).catch(console.error);
 }

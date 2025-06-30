@@ -202,19 +202,13 @@ export default async function command(interaction: CommandInteraction) {
         await interaction.reply({
             content: "Invalid station",
             flags: ["Ephemeral"]
-        });
+        }).catch(console.error);
         return;
     }
     const platform = interaction.options.get('platform')?.value as PlatformNumber;
-    if (platform) {
-        await interaction.reply(
-            await getPlatformPage(stationCode, platform)
-        );
-    } else {
-        await interaction.reply(
-            await getStationPage(stationCode)
-        );
-    }
+    await interaction.reply(
+        platform ? await getPlatformPage(stationCode, platform) : await getStationPage(stationCode)
+    ).catch(console.error);
 }
 
 export async function autoCompleteOptions(focusedOption: AutocompleteFocusedOption) {
@@ -232,12 +226,11 @@ export async function button(interaction: ButtonInteraction, rest: string[]) {
         return;
     }
     if (interaction.user === interaction.message.interactionMetadata.user) {
-        await interaction.update(page);
+        await interaction.update(page).catch(console.error);
     } else {
-        if (typeof page === "object") {
-            await interaction.reply({ ...page, flags: ["Ephemeral"] });
-        } else {
-            await interaction.reply({ content: page, flags: ["Ephemeral"] });
-        }
+        await interaction.reply({
+            ...(typeof page === "object" ? page : { content: page }),
+            flags: ["Ephemeral"]
+        }).catch(console.error);
     }
 }

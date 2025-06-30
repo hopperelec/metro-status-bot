@@ -17,7 +17,7 @@ export default async function command(interaction: CommandInteraction) {
     try {
         train = await proxy.getTrain(trn) as FullTrainResponse;
     } catch {
-        await interaction.reply(`No train with TRN ${trn} is active or timetabled to be running`);
+        await interaction.reply(`No train with TRN ${trn} is active or timetabled to be running`).catch(console.error);
         return;
     }
 
@@ -81,7 +81,7 @@ export default async function command(interaction: CommandInteraction) {
         await interaction.reply({
             content: lines.join('\n'),
             embeds: [trainEmbed({ trn, date: train.lastChanged, status: train.status })],
-        });
+        }).catch(console.error);
     } else {
         const row = new ActionRowBuilder<ButtonBuilder>()
             .addComponents(
@@ -94,7 +94,7 @@ export default async function command(interaction: CommandInteraction) {
         await interaction.reply({
             content: lines.join('\n'),
             components: [row]
-        });
+        }).catch(console.error);
     }
 }
 

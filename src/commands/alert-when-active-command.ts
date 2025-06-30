@@ -14,7 +14,7 @@ export default async function command(interaction: CommandInteraction) {
         await interaction.reply({
             content: `Train T${trn} is already active`,
             embeds: [trainEmbed({ trn, date: train.lastChanged as Date, status: train.status })]
-        });
+        }).catch(console.error);
     } else {
         await subscribeTo(trn, interaction);
     }
@@ -34,7 +34,7 @@ export async function subscribeTo(
             await interaction.reply({
                 content: `You're already subscribed to train ${trn}.`,
                 flags: ['Ephemeral']
-            });
+            }).catch(console.error);
             return;
         }
     }
@@ -45,5 +45,5 @@ export async function subscribeTo(
     await interaction.reply({
         content: `I'll DM you when train ${trn} appears.`,
         flags: ['Ephemeral']
-    });
+    }).catch(console.error);
 }

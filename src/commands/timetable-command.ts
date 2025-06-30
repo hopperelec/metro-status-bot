@@ -115,7 +115,7 @@ export default async function command(interaction: CommandInteraction) {
         await interaction.reply({
             content: "You can only specify either a day type or a date, not both.",
             flags: ["Ephemeral"]
-        });
+        }).catch(console.error);
         return;
     }
 
@@ -126,7 +126,7 @@ export default async function command(interaction: CommandInteraction) {
             await interaction.reply({
                 content: "Invalid station",
                 flags: ["Ephemeral"]
-            });
+            }).catch(console.error);
             return;
         }
     }
@@ -138,7 +138,7 @@ export default async function command(interaction: CommandInteraction) {
     if (dayType) {
         const trainTimetable = weekTimetable[dayType][trn];
         if (!trainTimetable) {
-            await interaction.reply(`Train T${trn} is not timetabled for a ${dayType}.`);
+            await interaction.reply(`Train T${trn} is not timetabled for a ${dayType}.`).catch(console.error);
             return;
         }
         whenDescription = `on ${dayType}s`;
@@ -151,7 +151,7 @@ export default async function command(interaction: CommandInteraction) {
             await interaction.reply({
                 content: "Invalid date format. Please use YYYY-MM-DD.",
                 flags: ["Ephemeral"]
-            });
+            }).catch(console.error);
             return;
         }
         const options = { trn, date, station: stationCode, direction }
@@ -159,7 +159,7 @@ export default async function command(interaction: CommandInteraction) {
         try {
             trainTimetable = await proxy.getTimetable(options)
         } catch (e) {
-            await interaction.reply(`An error occurred trying to fetch this train's timetable: ${e}`);
+            await interaction.reply(`An error occurred trying to fetch this train's timetable: ${e}`).catch(console.error);
             return;
         }
         whenDescription = `on ${dateString}`;
@@ -169,7 +169,7 @@ export default async function command(interaction: CommandInteraction) {
     } else {
         const trainTimetable = (await getTodaysTimetable())[trn];
         if (!trainTimetable) {
-            await interaction.reply(`Train T${trn} is not timetabled for today.`);
+            await interaction.reply(`Train T${trn} is not timetabled for today.`).catch(console.error);
             return;
         }
         whenDescription = 'today';
@@ -197,7 +197,7 @@ export default async function command(interaction: CommandInteraction) {
             { name: 'Arrival', value: `${arrival.place} @ ${formatTime(arrival.time)} via ${arrival.via}` },
             { name: `Times ${whereDescription}`, value: timesString }
         ]);
-    await interaction.reply({ embeds: [embed] });
+    await interaction.reply({ embeds: [embed] }).catch(console.error);
 }
 
 export function autoCompleteOptions(focusedOption: AutocompleteFocusedOption) {

@@ -385,12 +385,14 @@ export default async function command(interaction: CommandInteraction) {
         to = timeStringToDate(endTime);
         to.setMilliseconds(999);
     }
-    await interaction.deferReply()
-    await interaction.editReply(await getPage(
+    const deferReply = interaction.deferReply().catch(console.error);
+    const page = await getPage(
         interaction.options.get('trn').value as string,
         interaction.options.get('property').value as string,
         from || to ? `${from?.getTime() || ''}...${to?.getTime() || ''}` : undefined,
-    ));
+    );
+    await deferReply;
+    await interaction.editReply(page);
 }
 
 export function autoCompleteOptions(focusedOption: AutocompleteFocusedOption) {
@@ -400,16 +402,21 @@ export function autoCompleteOptions(focusedOption: AutocompleteFocusedOption) {
 export async function button(interaction: ButtonInteraction, rest: string[]) {
     const [trn, property, ...extra] = rest;
     if (interaction.user === interaction.message.interactionMetadata.user) {
-        await interaction.update({
+        const update = interaction.update({
             content: `Loading...`,
             components: []
-        });
-        await interaction.editReply(await getPage(trn, property, extra.join(':')));
+        }).catch(console.error);
+        const page = await getPage(trn, property, extra.join(':'));
+        await update;
+        await interaction.editReply(page);
     } else {
-        const reply = await interaction.reply({
+        const pagePromise = getPage(trn, property, extra.join(':'));
+        await interaction.reply({
             content: `Loading...`,
             flags: ["Ephemeral"],
-        });
-        await reply.edit(await getPage(trn, property, extra.join(':')));
+        })
+            .then(async reply => await reply.edit(await pagePromise))
+            .catch(console.error)
+
     }
 }

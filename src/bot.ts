@@ -329,7 +329,7 @@ export async function alertNowActive(subscription: AlertSubscription, train: Tra
     await user.send({
         content: message,
         embeds: [trainEmbed(train)]
-    });
+    }).catch();
 }
 
 // Train statuses API

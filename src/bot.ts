@@ -223,14 +223,15 @@ export async function announceUnrecognisedDestinations(
 ) {
     let message: string;
     if (unrecognisedDestinations.length === 1) {
-        const destination = unrecognisedDestinations[0].toLowerCase();
-        if (["terminates", "not in service"].includes(destination)) {
+        const destination = unrecognisedDestinations[0];
+        const lowerDestination = destination.toLowerCase();
+        if (["terminates", "not in service"].includes(lowerDestination)) {
             message = `is showing as "${destination}" on the Pop app.`;
-        } else if (destination === "gosforth depot") {
+        } else if (lowerDestination === "gosforth depot") {
             message = `is heading to ${destination} but is showing on the Pop app.`;
         } else if (destination === "") {
             message = 'is showing a blank destination on the Pop app. This often happens when it is actually heading to Bede.';
-        } else if (destination === "blank") {
+        } else if (lowerDestination === "blank") {
             message = `is showing the literal text "${destination}" as its destination on the Pop app. As opposed to an actually blank destination, this does not seem to indicate it is heading to Bede. I am not sure what it means.`;
         } else {
             message = `has a new unrecognised current and/or planned destination "${destination}"`;

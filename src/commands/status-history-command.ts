@@ -370,8 +370,22 @@ export default async function command(interaction: CommandInteraction) {
     let to: Date;
     if (startDate) {
         from = startTime ? new Date(`${startDate}T${startTime}`) : new Date(startDate);
+        if (isNaN(from.getTime())) {
+            await interaction.reply({
+                content: "Invalid start date and/or time.",
+                flags: ["Ephemeral"]
+            }).catch(console.error);
+            return;
+        }
     } else if (startTime) {
         from = timeStringToDate(startTime);
+        if (isNaN(from.getTime())) {
+            await interaction.reply({
+                content: "Invalid start time.",
+                flags: ["Ephemeral"]
+            }).catch(console.error);
+            return;
+        }
         from.setMilliseconds(0);
     }
     if (endDate) {
@@ -381,8 +395,22 @@ export default async function command(interaction: CommandInteraction) {
             to = new Date(endDate);
             to.setHours(23, 59, 59, 999);
         }
+        if (isNaN(to.getTime())) {
+            await interaction.reply({
+                content: "Invalid end date and/or time.",
+                flags: ["Ephemeral"]
+            }).catch(console.error);
+            return;
+        }
     } else if (endTime) {
         to = timeStringToDate(endTime);
+        if (isNaN(to.getTime())) {
+            await interaction.reply({
+                content: "Invalid end time.",
+                flags: ["Ephemeral"]
+            }).catch(console.error);
+            return;
+        }
         to.setMilliseconds(999);
     }
     const deferReply = interaction.deferReply().catch(console.error);

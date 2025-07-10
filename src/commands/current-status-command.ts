@@ -32,12 +32,12 @@ export default async function command(interaction: CommandInteraction) {
     if (train.status) {
         lines.push(`This train is currently active, and it's current status is shown below.`);
     } else {
-        lines.push(`No train with TRN ${trn} is currently running.`);
+        lines.push(`No train with TRN ${trn} is currently showing on the Pop app.`);
     }
 
     if (trainTimetable) {
         const timetabledStatus = getExpectedTrainState(trainTimetable, secondsSinceMidnight(new Date()));
-        lines.push(`It should ${expectedTrainStateToString(timetabledStatus)}`);
+        lines.push(`It should ${expectedTrainStateToString(timetabledStatus)}.`);
     } else {
         lines.push("This train is not timetabled to run today.");
     }

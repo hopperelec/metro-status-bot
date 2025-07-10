@@ -28,20 +28,18 @@ import {
     getStationCode,
     refreshCache,
     lastHistoryEntries, compareTimes,
-    trainsWithHistory, weekTimetable, setLastHeartbeat, lastHeartbeat, getTodaysTimetable
+    trainsWithHistory, setLastHeartbeat, lastHeartbeat, getTodaysTimetable
 } from "./cache";
 import {
     ActiveTrainHistoryEntry,
     ActiveTrainHistoryStatus,
     CollatedTrain, FullNewTrainsHistoryPayload,
     ParsedLastSeen, ParsedTimesAPILocation, parseLastSeen, parseTimesAPILocation, PlatformNumber, TimesApiData,
-    TrainStatusesApiData
+    TrainStatusesApiData, TrainTimetable
 } from "metro-api-client";
 import {
-    getDayType,
     getExpectedTrainState,
-    getFlatTimetableForTRN,
-    timeDateToStr,
+    secondsSinceMidnight,
     whenIsNextDay
 } from "./timetable";
 
@@ -110,7 +108,7 @@ async function checkPlatform(
     trn: string,
     stationName: string,
     platform: PlatformNumber,
-    time: string
+    time: number
 ) {
     switch (platform) {
         case 1:
@@ -119,16 +117,17 @@ async function checkPlatform(
             return;
         case 2:
             if (stationName !== "St James") return;
-            const trainTimetable = (await getTodaysTimetable())[trn];
+            const trainTimetable = (await getTodaysTimetable()).trains[trn];
             if (!trainTimetable) return;
-            const fullTimetable = getFlatTimetableForTRN(trainTimetable);
+            const firstEntry = trainTimetable[0];
             if (
-                trainTimetable.departure.place === "St James Platform 2" &&
-                compareTimes(time, fullTimetable[0].time) <= 0
+                firstEntry.location === "SJM_2" && firstEntry.departureTime &&
+                compareTimes(time, firstEntry.departureTime) <= 0
             ) return;
+            const lastEntry = trainTimetable[trainTimetable.length - 1];
             if (
-                trainTimetable.arrival.place === "St James Platform 2" &&
-                compareTimes(time, fullTimetable[fullTimetable.length - 1].time) >= 0
+                lastEntry.location === "SJM_2" && lastEntry.arrivalTime &&
+                compareTimes(time, lastEntry.arrivalTime) >= 0
             ) return;
             return "sjm-p2";
         case 3:
@@ -166,6 +165,13 @@ async function trainStatusesChecks(
     }
 }
 
+function isNightHours(trainTimetable: TrainTimetable, time: number) {
+    const firstEntry = trainTimetable[0];
+    if (firstEntry.departureTime && compareTimes(time, firstEntry.departureTime) < 0) return true;
+    const lastEntry = trainTimetable[trainTimetable.length - 1];
+    return lastEntry.arrivalTime && compareTimes(time, lastEntry.arrivalTime) > 0;
+}
+
 async function shouldAnnounceUntimetabledActivity(
     checkData: TrainCheckData,
     parsedLastSeen?: ParsedLastSeen
@@ -175,15 +181,13 @@ async function shouldAnnounceUntimetabledActivity(
     // Only announce when the train first becomes active
     if (prev?.status) return;
 
-    const trainTimetable = (await getTodaysTimetable())[trn];
+    const trainTimetable = (await getTodaysTimetable()).trains[trn];
     if (!trainTimetable) return "wrong-day";
 
     if (curr.status.timesAPI) {
         const dateInTimes = curr.status.timesAPI.lastEvent.time;
-        const expectedStateInTimes =
-            getExpectedTrainState(trainTimetable, timeDateToStr(dateInTimes)).state;
-        if (expectedStateInTimes === "not-started" || expectedStateInTimes === "ended")
-            return "night-hours";
+        const timeInTimes = secondsSinceMidnight(dateInTimes);
+        if (isNightHours(trainTimetable, timeInTimes)) return "night-hours";
     }
 
     if (parsedLastSeen) {
@@ -193,10 +197,8 @@ async function shouldAnnounceUntimetabledActivity(
         if (parsedLastSeen.hours - curr.date.getHours() >= 12) {
             dateInStatuses.setDate(dateInStatuses.getDate() - 1);
         }
-        const expectedStateInTimes =
-            getExpectedTrainState(trainTimetable, timeDateToStr(dateInStatuses)).state;
-        if (expectedStateInTimes === "not-started" || expectedStateInTimes === "ended")
-            return "night-hours";
+        const timeInStatuses = secondsSinceMidnight(dateInStatuses);
+        if (isNightHours(trainTimetable, timeInStatuses)) return "night-hours";
     }
 }
 
@@ -309,7 +311,7 @@ async function eitherAPIChecks(
         trn,
         parsedLastSeen?.station ?? timesAPILocation.station,
         parsedLastSeen?.platform ?? timesAPILocation.platform,
-        timeDateToStr(checkData.curr.date)
+        secondsSinceMidnight(checkData.curr.date)
     );
     if (platformCheck === "sss-p1") {
         await announceTrainAtSouthShieldsP1(await getFullEmbedData(checkData));
@@ -360,15 +362,14 @@ async function checkActiveTrain(checkData: TrainCheckData) {
 }
 
 async function handleDisappearedTrain(trn: string, prev: Omit<ActiveTrainHistoryEntry, "active">) {
-    const dayType = getDayType(lastHeartbeat);
-    const trainTimetable = weekTimetable[dayType][trn];
+    const trainTimetable = (await getTodaysTimetable()).trains[trn];
     if (trainTimetable) {
-        if (getExpectedTrainState(trainTimetable, timeDateToStr(lastHeartbeat)).state === "active") {
+        if (getExpectedTrainState(trainTimetable, secondsSinceMidnight(lastHeartbeat)).inService) {
             await announceDisappearedTrain({trn, ...prev});
             missingTrains.set(trn, { announced: true, whenToForget: whenIsNextDay(lastHeartbeat) });
         }
     } else {
-        await announceTrainOnWrongDayDisappeared({trn, ...prev}, dayType);
+        await announceTrainOnWrongDayDisappeared({trn, ...prev});
     }
 }
 

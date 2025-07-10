@@ -1,210 +1,231 @@
-import {AutocompleteFocusedOption, CommandInteraction, EmbedBuilder} from "discord.js";
-import {
-    AllStationsRoute,
-    FullArrival,
-    FullDeparture, SingleStationRoute, TimetableOptions,
-    TrainDirection,
-    TrainTimetable,
-} from "metro-api-client";
-import {DayType} from "../timetable";
-import {apiConstants, compareTimes, weekTimetable, timetabledTrns, getTodaysTimetable} from "../cache";
-import {TRAIN_DIRECTIONS} from "../constants";
+import {AutocompleteFocusedOption, CommandInteraction} from "discord.js";
+import {apiConstants, compareTimes, getTodaysTimetable} from "../cache";
+import {DayTimetable, TrainTimetableEntry} from "metro-api-client";
 import {proxy} from "../bot";
-import {getStationOptions, parseStationOption} from "./index";
+import {locationsMatch} from "../timetable";
 
-function formatTime(time: string) {
-    return `${time.slice(0, 2)}:${time.slice(2, 4)}${time.length > 4 ? `:${time.slice(4)}` : ''}`;
+function formatTime(time: number | undefined) {
+    if (time === undefined) return '--:--:--';
+    const hours = Math.floor(time / 3600);
+    const minutes = Math.floor((time % 3600) / 60);
+    const seconds = time % 60;
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 }
 
-function formatCachedTimetable(
-    trainTimetable: TrainTimetable,
-    station?: string,
-    direction?: TrainDirection,
-) {
-    let timeStrings: string[];
-    if (station) {
-        if (direction) {
-            // {time}, {time}, ...
-            timeStrings = trainTimetable[direction]
-                .map(route => route.stations[station])
-                .filter(Boolean)
-                .sort(compareTimes)
-                .map(time => formatTime(time));
-        } else {
-            // in @ {time}, out @ {time}, in @ {time}, ...
-            timeStrings = TRAIN_DIRECTIONS
-                .flatMap(direction =>
-                    trainTimetable[direction]
-                        .map(entry => entry.stations[station])
-                        .filter(Boolean)
-                        .map(time => ({ direction, time }))
-                )
-                .sort((a, b) => compareTimes(a.time, b.time))
-                .map(route => `${route.direction} @ ${formatTime(route.time)}`);
-        }
-    } else {
-        // {terminus} @ {time}, {terminus} @ {time}, ...
-        timeStrings = (
-            direction ? trainTimetable[direction] : [...trainTimetable.in, ...trainTimetable.out]
-        ).map(route =>
-            Object.entries(route.stations)
-                .filter(([station]) => station !== "FORMS")
-        ).filter(stations => stations.length)
-            .map(stations => {
-                stations.sort((a, b) => compareTimes(a[1], b[1]));
-                return stations[stations.length - 1];
-            })
-            .sort((a, b) => compareTimes(a[1], b[1]))
-            .map(([station, time]) => `${station} @ ${formatTime(time)}`);
+function parseTime(timeString: string): number | undefined {
+    const parts = timeString.split(':').map(Number);
+    if (parts.length !== 2 && parts.length !== 3) return;
+    if (parts.some(isNaN)) return;
+    let time = 0;
+    if (parts[0] < 0 || parts[0] > 23) return; // hours
+    if (parts[1] < 0 || parts[1] > 59) return; // minutes
+    time += parts[0] * 3600 + parts[1] * 60;
+    if (parts.length === 3) {
+        // seconds
+        if (parts[2] < 0 || parts[2] > 59) return;
+        time += parts[2];
     }
-    if (timeStrings.length) return timeStrings.join(', ');
-    return '*This train is not timetabled to stop here*';
-}
-
-function formatProxyTimetable<Options extends TimetableOptions>(
-    trainTimetable: TrainTimetable<Options>,
-    {station, direction}: Options
-): string {
-    let timeStrings: string[];
-    if (station) {
-        if (direction) {
-            // {time}, {time}, ...
-            timeStrings = (trainTimetable[direction] as SingleStationRoute[])
-                .map(route => route.time)
-                .sort(compareTimes)
-                .map(time => formatTime(time));
-        } else {
-            const _trainTimetable = trainTimetable as TrainTimetable<{ station: string; }>
-            // in @ {time}, out @ {time}, in @ {time}, ...
-            timeStrings = TRAIN_DIRECTIONS
-                .flatMap(direction =>
-                    _trainTimetable[direction]
-                        .map(entry => entry.time)
-                        .filter(Boolean)
-                        .map(time => ({ direction, time }))
-                )
-                .sort((a, b) => compareTimes(a.time, b.time))
-                .map(route => `${route.direction} @ ${formatTime(route.time)}`);
-        }
-    } else {
-        // {terminus} @ {time}, {terminus} @ {time}, ...
-        timeStrings = (
-            (direction ? trainTimetable[direction] : [...trainTimetable.in, ...trainTimetable.out]) as AllStationsRoute[]
-        ).map(route =>
-            Object.entries(route.stations)
-                .filter(([station]) => station !== "FORMS")
-        ).filter(stations => stations.length)
-            .map(stations => {
-                stations.sort((a, b) => compareTimes(a[1], b[1]));
-                return stations[stations.length - 1];
-            })
-            .sort((a, b) => compareTimes(a[1], b[1]))
-            .map(([station, time]) => `${station} @ ${formatTime(time)}`);
-    }
-    return timeStrings.join(', ');
+    return time;
 }
 
 export default async function command(interaction: CommandInteraction) {
-    const trn = interaction.options.get('trn').value as string;
-    const station = interaction.options.get('station')?.value as string | undefined;
-    const direction = interaction.options.get('direction')?.value as TrainDirection | undefined;
-    const dayType = interaction.options.get('day')?.value as DayType | undefined;
-    const dateString = interaction.options.get('date')?.value as string | undefined;
+    const trns = (interaction.options.get('trns')?.value as string | undefined)?.split(',').map(trn => trn.trim());
 
-    if (dayType && dateString) {
-        await interaction.reply({
-            content: "You can only specify either a day type or a date, not both.",
-            flags: ["Ephemeral"]
-        }).catch(console.error);
+    const locationsString = interaction.options.get('locations')?.value as string | undefined;
+    const locations = locationsString ? locationsString.split(',').map(loc => loc.trim()) : undefined;
+
+    const destinationsString = interaction.options.get('destinations')?.value as string | undefined;
+    const destinations = destinationsString ? destinationsString.split(',').map(dest => dest.trim()) : undefined;
+
+    const inService = interaction.options.get('in-service')?.value as boolean | undefined;
+
+    const onlyTermini = interaction.options.get('only-termini')?.value as boolean | undefined;
+
+    const typesString = interaction.options.get('types')?.value as string | undefined;
+    let types: Set<number> | undefined;
+    if (typesString) {
+        types = new Set();
+        for (const typeString of typesString.split(',').map(t => t.trim())) {
+            const parsedType = +typeString;
+            if (![1, 2, 3, 4].includes(parsedType)) {
+                await interaction.reply({
+                    content: `Invalid type "${typeString}". Valid types are 1 (depot start), 2 (passenger stop), 3 (ECS or skips), and 4 (depot end).`,
+                    flags: ["Ephemeral"]
+                }).catch(console.error);
+                return;
+            }
+            types.add(parsedType);
+        }
+    }
+
+    const startTimeString = interaction.options.get('start-time')?.value as string | undefined;
+    let startTime: number | undefined;
+    if (startTimeString) {
+        startTime = parseTime(startTimeString);
+        if (startTime === undefined) {
+            await interaction.reply({
+                content: `Invalid start time "${startTimeString}". Please use HH:MM[:SS] format.`,
+                flags: ["Ephemeral"]
+            }).catch(console.error);
+            return;
+        }
+    }
+
+    const endTimeString = interaction.options.get('end-time')?.value as string | undefined;
+    let endTime: number | undefined;
+    if (endTimeString) {
+        endTime = parseTime(endTimeString);
+        if (endTime === undefined) {
+            await interaction.reply({
+                content: `Invalid end time "${endTimeString}". Please use HH:MM[:SS] format.`,
+                flags: ["Ephemeral"]
+            }).catch(console.error);
+            return;
+        }
+    }
+
+    const dateString = interaction.options.get('date')?.value as string | undefined;
+    let date: Date | undefined;
+    if (dateString) {
+        date = new Date(dateString);
+        if (isNaN(date.getTime())) {
+            await interaction.reply({
+                content: `Invalid date "${dateString}". Please use YYYY-MM-DD format.`,
+                flags: ["Ephemeral"]
+            }).catch(console.error);
+            return;
+        }
+    }
+
+    const limit = interaction.options.get('limit')?.value as number | undefined;
+
+    const deferReply = interaction.deferReply();
+
+    let dayTimetable: DayTimetable;
+    if (date) {
+        dayTimetable = await proxy.getTimetable({
+            date,
+            time: {
+                from: startTime,
+                to: endTime
+            },
+            limit,
+            trns,
+            types: types ? [...types] as (1 | 2 | 3 | 4)[]: undefined,
+            locations,
+            destinations,
+            inService,
+            onlyTermini,
+        });
+    } else {
+        // Filter using the cached timetable for today
+        const todaysTimetable = await getTodaysTimetable();
+        dayTimetable = {
+            description: todaysTimetable.description,
+            trains: {},
+        }
+        for (const trn of (trns || Object.keys(todaysTimetable.trains))) {
+            const trainTimetable = todaysTimetable.trains[trn];
+            dayTimetable.trains[trn] = trainTimetable ? trainTimetable.filter(entry => !(
+                (locations && !locations.some(loc => locationsMatch(entry.location, loc))) ||
+                (destinations && !destinations.some(dest => locationsMatch(entry.destination, dest))) ||
+                (inService !== undefined && entry.inService !== inService) ||
+                (onlyTermini && entry.arrivalTime && entry.departureTime) ||
+                (types && !types.has(entry.type)) ||
+                (startTime !== undefined && compareTimes(entry.arrivalTime || entry.departureTime, startTime) < 0) ||
+                (endTime !== undefined && compareTimes(entry.departureTime || entry.arrivalTime, endTime) > 0)
+            )) : [];
+            if (!(dayTimetable.trains[trn]?.length || trns)) {
+                delete dayTimetable.trains[trn];
+            } else if (limit) {
+                dayTimetable.trains[trn] = startTime === undefined && endTime !== undefined
+                    ? dayTimetable.trains[trn].slice(-limit)
+                    : dayTimetable.trains[trn].slice(0, limit);
+            }
+        }
+    }
+
+    if (Object.keys(dayTimetable.trains).length === 0) {
+        await deferReply;
+        await interaction.editReply(`No trains found for the specified criteria.`).catch(console.error);
         return;
     }
 
-    let stationCode: string | undefined;
-    if (station) {
-        stationCode = parseStationOption(station);
-        if (!stationCode) {
-            await interaction.reply({
-                content: "Invalid station",
-                flags: ["Ephemeral"]
-            }).catch(console.error);
-            return;
+    const flattenedEntries: ({ trn: string } & TrainTimetableEntry)[] = [];
+    for (const trn of Object.keys(dayTimetable.trains)) {
+        for (const entry of dayTimetable.trains[trn]) {
+            flattenedEntries.push({
+                trn,
+                ...entry
+            });
         }
     }
 
-    let whenDescription: string;
-    let departure: FullDeparture;
-    let arrival: FullArrival;
-    let timesString: string;
-    if (dayType) {
-        const trainTimetable = weekTimetable[dayType][trn];
-        if (!trainTimetable) {
-            await interaction.reply(`Train T${trn} is not timetabled for a ${dayType}.`).catch(console.error);
-            return;
+    let content = `## ${(date ? `Timetable for ${date.toISOString().split('T')[0]}` : "Today's timetable")}\n-# Based on ${dayTimetable.description}\n\`\`\``;
+    const rows: {
+        trn: string;
+        location: string;
+        rest: string;
+        arrivalTime?: number;
+        departureTime?: number;
+    }[] = [];
+    for (const entry of flattenedEntries) {
+        let location = entry.location;
+        if (!onlyTermini) {
+            location += ` towards ${entry.destination}`;
         }
-        whenDescription = `on ${dayType}s`;
-        departure = trainTimetable.departure as FullDeparture;
-        arrival = trainTimetable.arrival as FullArrival;
-        timesString = formatCachedTimetable(trainTimetable, stationCode, direction);
-    } else if (dateString) {
-        const date = new Date(dateString);
-        if (isNaN(date.getTime())) {
-            await interaction.reply({
-                content: "Invalid date format. Please use YYYY-MM-DD.",
-                flags: ["Ephemeral"]
-            }).catch(console.error);
-            return;
+        let rest = `${formatTime(entry.arrivalTime)} / ${formatTime(entry.departureTime)}`;
+        if (!types || types.size > 1) {
+            rest += ` | Type: ${entry.type}`;
         }
-        const options = { trn, date, station: stationCode, direction }
-        let trainTimetable: TrainTimetable<typeof options>;
-        try {
-            trainTimetable = await proxy.getTimetable(options)
-        } catch (e) {
-            await interaction.reply(`An error occurred trying to fetch this train's timetable: ${e}`).catch(console.error);
-            return;
+        if (inService === undefined && !entry.inService) {
+            rest += ' | Not In Service';
         }
-        whenDescription = `on ${dateString}`;
-        departure = trainTimetable.departure as FullDeparture;
-        arrival = trainTimetable.arrival as FullArrival;
-        timesString = formatProxyTimetable(trainTimetable, options);
-    } else {
-        const trainTimetable = (await getTodaysTimetable())[trn];
-        if (!trainTimetable) {
-            await interaction.reply(`Train T${trn} is not timetabled for today.`).catch(console.error);
-            return;
-        }
-        whenDescription = 'today';
-        departure = trainTimetable.departure as FullDeparture;
-        arrival = trainTimetable.arrival as FullArrival;
-        timesString = formatCachedTimetable(trainTimetable, stationCode, direction);
+        rows.push({
+            trn: `T${entry.trn}`,
+            location,
+            rest,
+            arrivalTime: entry.arrivalTime,
+            departureTime: entry.departureTime
+        });
     }
-
-    let whereDescription: string;
-    if (stationCode) {
-        const stationName = apiConstants.STATION_CODES[stationCode];
-        whereDescription = direction
-            ? `at ${stationName} ${direction}-line`
-            : `at ${stationName}`;
-    } else {
-        whereDescription = direction
-            ? `${direction}-line termini`
-            : 'at termini';
+    rows.sort((a, b) => compareTimes(a.departureTime || a.arrivalTime, b.arrivalTime || b.departureTime));
+    const longestTrnLength = Math.max(...rows.map(row => row.trn.length));
+    const longestLocationLength = Math.max(...rows.map(row => row.location.length));
+    for (const row of rows) {
+        if (!trns || trns.length > 1) {
+            content += `${row.trn.padEnd(longestTrnLength)} | `;
+        }
+        content += `${row.location.padEnd(longestLocationLength)} | ${row.rest}\n`;
     }
+    content += '```';
 
-    const embed = new EmbedBuilder()
-        .setTitle(`T${trn}'s timetable ${whenDescription}`)
-        .setFields([
-            { name: 'Departure', value: `${departure.place} @ ${formatTime(departure.time)} via ${departure.via}` },
-            { name: 'Arrival', value: `${arrival.place} @ ${formatTime(arrival.time)} via ${arrival.via}` },
-            { name: `Times ${whereDescription}`, value: timesString }
-        ]);
-    await interaction.reply({ embeds: [embed] }).catch(console.error);
+    await deferReply;
+    await interaction.editReply(content.length <= 2000 ? content : {
+        content: `The response is too long to display in a message so has been attached as a file. Please open the file or refine your search criteria.`,
+        files: [{
+            attachment: Buffer.from(content, 'utf-8'),
+            name: 'timetable.txt'
+        }],
+    }).catch(console.error);
 }
 
-export function autoCompleteOptions(focusedOption: AutocompleteFocusedOption) {
-    if (focusedOption.name === 'trn') {
-        return Array.from(timetabledTrns);
+export async function autoCompleteOptions(focusedOption: AutocompleteFocusedOption) {
+    let options: string[] = [];
+    if (focusedOption.name === 'trns') {
+        options = Object.keys((await getTodaysTimetable()).trains);
     }
-    if (focusedOption.name === 'station') {
-        return getStationOptions();
+    if (focusedOption.name === 'locations' || focusedOption.name === 'destinations') {
+        options = Object.keys(apiConstants.STATION_CODES);
     }
+    if (focusedOption.name === 'types') {
+        options = ['1', '2', '3', '4'];
+    }
+    if (!options.length) return [];
+    if (!focusedOption.value) return options;
+    const parts = focusedOption.value.split(',');
+    const start = parts.pop().trim().toLowerCase();
+    const rest = parts.join(',');
+    return options.filter(item => item.toLowerCase().startsWith(start))
+        .map(item => rest ? `${rest},${item}` : item);
 }

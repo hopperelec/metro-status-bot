@@ -1,14 +1,10 @@
 import {
     ActiveTrainHistoryEntry,
-    ApiConstants, compareTimes as _compareTimes, FullTrainsResponse,
-    MetroApiClient, PlatformNumber, TrainTimetable
+    ApiConstants, compareTimes as _compareTimes, DayTimetable, FullTrainsResponse,
+    MetroApiClient, PlatformNumber,
 } from "metro-api-client";
-import {DayType, getDayType, whenIsNextDay} from "./timetable";
+import {whenIsNextDay} from "./timetable";
 import {proxy, updateActivity} from "./bot";
-
-const EXAMPLE_WEEKDAY = new Date(2024, 0, 8);
-const EXAMPLE_SATURDAY = new Date(2024, 0, 6);
-const EXAMPLE_SUNDAY = new Date(2024, 0, 7);
 
 export let lastHeartbeat: Date;
 export function setLastHeartbeat(date: Date) {
@@ -16,7 +12,7 @@ export function setLastHeartbeat(date: Date) {
 }
 
 let whenToRefreshTimetable: Date
-let todaysTimetable: Record<string, TrainTimetable>;
+let todaysTimetable: DayTimetable;
 
 async function refreshTodaysTimetable() {
     const date = new Date();
@@ -32,8 +28,6 @@ export async function getTodaysTimetable() {
 }
 
 export let apiConstants: ApiConstants;
-export let weekTimetable: { [key in DayType]: Record<string, TrainTimetable> };
-export let timetabledTrns: Set<string> = new Set();
 export let lastHistoryEntries: Record<string, Omit<ActiveTrainHistoryEntry, "active">> = {};
 export let trainsWithHistory = new Set<string>();
 
@@ -41,13 +35,7 @@ export async function refreshCache(proxy: MetroApiClient) {
     console.log("Refreshing cache...");
     apiConstants = await proxy.getConstants();
 
-    weekTimetable = {
-        weekday: await proxy.getTimetable({ date: EXAMPLE_WEEKDAY }),
-        saturday: await proxy.getTimetable({ date: EXAMPLE_SATURDAY }),
-        sunday: await proxy.getTimetable({ date: EXAMPLE_SUNDAY })
-    };
     await refreshTodaysTimetable();
-    timetabledTrns = new Set(Object.values(weekTimetable).flatMap(dayTimetable => Object.keys(dayTimetable)));
 
     const trainsResponse = await proxy.getTrains() as FullTrainsResponse;
     lastHistoryEntries = Object.fromEntries(
@@ -80,10 +68,6 @@ export function getStationCode(station: string, platform?: PlatformNumber) {
     }
 }
 
-export function getDayTimetable(date: Date) {
-    return weekTimetable[getDayType(date)];
-}
-
-export function compareTimes(a: string, b: string) {
+export function compareTimes(a: number, b: number) {
     return _compareTimes(a, b, apiConstants.NEW_DAY_HOUR);
 }

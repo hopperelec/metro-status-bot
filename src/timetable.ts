@@ -1,19 +1,13 @@
-import {apiConstants, compareTimes, getDayTimetable} from "./cache";
-import {ExpectedTrainState, TrainTimetable} from "metro-api-client";
-import {TRAIN_DIRECTIONS} from "./constants";
-
-export type DayType =  'weekday' | 'saturday' | 'sunday';
-
-export function getDayType(date: Date): DayType {
-    const dateCopy = new Date(date);
-    if (dateCopy.getHours() < apiConstants.NEW_DAY_HOUR) {
-        dateCopy.setDate(dateCopy.getDate() - 1);
-    }
-    const day = dateCopy.getDay();
-    if (day === 0) return "sunday";
-    if (day === 6) return "saturday";
-    return "weekday";
-}
+import {apiConstants, compareTimes, getStationCode} from "./cache";
+import {
+    DayTimetable,
+    ExpectedTrainState,
+    parseLastSeen, parseTimesAPILocation,
+    TimesApiData, TrainStatusesApiData,
+    TrainTimetable,
+    TrainTimetableEntry
+} from "metro-api-client";
+import {MONUMENT_STATION_CODES} from "./constants";
 
 export function whenIsNextDay(date?: Date) {
     let nextDay = new Date(date);
@@ -22,185 +16,177 @@ export function whenIsNextDay(date?: Date) {
     return nextDay;
 }
 
-export function timeNumbersToStr(hours: number, minutes: number, seconds?: number) {
-    const hoursStr = hours.toString().padStart(2, "0");
-    const minutesStr = minutes.toString().padStart(2, "0");
-    const secondsStr = (seconds || 30).toString().padStart(2, "0");
-    return `${hoursStr}${minutesStr}${secondsStr}`;
+export function secondsSinceMidnight(date?: Date) {
+    if (!date) date = new Date();
+    return date.getHours() * 3600 + date.getMinutes() * 60 + date.getSeconds();
 }
 
-export function timeDateToStr(date: Date) {
-    return timeNumbersToStr(date.getHours(), date.getMinutes(), date.getSeconds());
-}
-
-export function getTimetabledTrains(date?: Date) {
-    const timeStr = timeDateToStr(date);
-    return Object.entries(getDayTimetable(date))
-        .filter(([_,trainTimetable]) => {
-            return getExpectedTrainState(trainTimetable, timeStr).state === "active";
-        })
+export function getTimetabledTrains(timetable: DayTimetable, time: number) {
+    return Object.entries(timetable.trains)
+        .filter(([_,trainTimetable]) => getExpectedTrainState(trainTimetable, time).inService)
         .map(([trn]) => trn);
 }
 
-export function getFlatTimetableForTRN(trainTimetable: TrainTimetable, includeForms = false) {
-    let sortedRoutes = TRAIN_DIRECTIONS
-        .flatMap(direction =>
-            trainTimetable[direction].map(
-                route => {
-                    const sortedStations = Object.entries(route.stations)
-                        .sort((a, b) => compareTimes(a[1], b[1]));
-                    const withoutForms = sortedStations.filter(([station]) => station !== "FORMS");
-                    const destination = withoutForms.length
-                        ? withoutForms[withoutForms.length - 1][0]
-                        : "Not In Service";
-                    return sortedStations
-                        .map(([station, time]) => ({
-                            station,
-                            time,
-                            direction,
-                            route: route.code,
-                            destination
-                        }))
-                }
-            )
-        )
-        .filter(route => route.length)
-        .sort((route1, route2) => compareTimes(route1[0].time, route2[0].time));
-    if (!includeForms) {
-        // This is done after sorting, so that sorting will work on routes only containing FORMS
-        sortedRoutes = sortedRoutes.map(route => route.filter(({ station }) => station !== "FORMS"));
+export function getExpectedTrainState(trainTimetable: TrainTimetable, time: number): ExpectedTrainState {
+    let index = 0;
+    let state: ExpectedTrainState;
+    let entry: TrainTimetableEntry;
+    while (index < trainTimetable.length) {
+        entry = trainTimetable[index];
+        if (entry.arrivalTime && compareTimes(entry.arrivalTime, time) > 0) {
+            // There should always be a previous entry because the first entry should not have an arrival time
+            const previousEntry = trainTimetable[index - 1];
+            if (compareTimes(entry.arrivalTime, time) > compareTimes(time, previousEntry.departureTime)) {
+                state = {
+                    event: 'DEPARTED',
+                    location: previousEntry.location,
+                    inService: previousEntry.inService,
+                    destination: previousEntry.destination,
+                };
+            } else {
+                state = {
+                    event: 'APPROACHING',
+                    location: entry.location,
+                    inService: previousEntry.inService,
+                    destination: entry.destination,
+                };
+            }
+        } else if (entry.departureTime && compareTimes(entry.departureTime, time) > 0) {
+            state = {
+                event: 'ARRIVED',
+                location: entry.location,
+                inService: entry.inService,
+                destination: entry.destination,
+            }
+        }
+        if (state) break;
+        index++;
     }
-    return sortedRoutes.flat();
+    if (!state) {
+        // If we reach here, the train has already departed from the last station
+        const lastEntry = trainTimetable[trainTimetable.length - 1];
+        return {
+            event: lastEntry.departureTime && compareTimes(lastEntry.departureTime, time) <= 0 ? 'DEPARTED' : 'ARRIVED',
+            location: lastEntry.location,
+            inService: lastEntry.inService,
+            destination: lastEntry.destination,
+        };
+    }
+    return state;
 }
 
-export function getExpectedTrainState(trainTimetable: TrainTimetable, time: string): ExpectedTrainState {
-    // The proxy tells us the expected train state in the `/train/:trn` endpoint.
-    // However, we are already caching the full timetable locally.
-    // So, we will figure it out locally.
-    if (compareTimes(time, trainTimetable.departure.time) < 0) return {
-        station1: trainTimetable.departure.place,
-        station2: trainTimetable.departure.place,
-        destination: trainTimetable.departure.place,
-        state: 'not-started'
-    };
-    if (compareTimes(time, trainTimetable.arrival.time) >= 0) return {
-        station1: trainTimetable.arrival.place,
-        station2: trainTimetable.arrival.place,
-        destination: trainTimetable.arrival.place,
-        state: 'ended'
-    };
-    const fullTimetable = getFlatTimetableForTRN(trainTimetable, true);
-
-    const firstEntry = fullTimetable[0];
-    if (compareTimes(time, firstEntry.time) <= 0) return {
-        station1: trainTimetable.departure.place,
-        station2: firstEntry.station === "FORMS" ? fullTimetable[1].station : firstEntry.station,
-        destination: firstEntry.station,
-        state: 'starting'
-    };
-
-    const lastEntry = fullTimetable[fullTimetable.length - 1];
-    if (compareTimes(time, lastEntry.time) >= 0) return {
-        station1: lastEntry.station === "FORMS" ? fullTimetable[fullTimetable.length - 2].station : lastEntry.station,
-        station2: trainTimetable.arrival.place,
-        destination: trainTimetable.arrival.place,
-        state: 'ending'
-    };
-
-    let nextEntryIndex = fullTimetable.findIndex(({ time: t }) => compareTimes(time, t) <= 0);
-    const nextEntry = fullTimetable[nextEntryIndex];
-    let prevEntryIndex = nextEntryIndex - 1;
-    const prevEntry = fullTimetable[prevEntryIndex];
-
-    let station1 = prevEntry.station;
-    if (station1 === "FORMS") {
-        if (prevEntryIndex-- === -1) {
-            return {
-                station1: trainTimetable.departure.place,
-                station2: nextEntry.station,
-                destination: prevEntry.destination,
-                state: 'starting'
-            }
-        }
-        station1 = fullTimetable[prevEntryIndex].station;
+export function expectedTrainStateToString(state: ExpectedTrainState) {
+    const location = renderLocation(state.location);
+    const destination = renderLocation(state.destination);
+    if (state.event === 'DEPARTED') {
+        return state.inService
+            ? `have departed from ${location} heading to ${destination}`
+            : `have departed from ${location} heading empty to ${destination}`;
     }
-
-    let station2 = nextEntry.station;
-    if (station2 === "FORMS") {
-        if (nextEntryIndex++ === fullTimetable.length) {
-            return {
-                station1: prevEntry.station,
-                station2: trainTimetable.arrival.place,
-                destination: nextEntry.destination,
-                state: 'ending'
-            }
+    if (state.event === 'ARRIVED') {
+        if (state.inService) {
+            return location === destination
+                ? `be terminated at ${location}`
+                : `be at ${location} heading to ${destination}`;
         }
-        station2 = fullTimetable[nextEntryIndex].station;
+        return location === destination
+            ? `be terminated at ${location} not in service`
+            : `be at ${location} heading empty to ${destination}`;
     }
+    if (state.inService) {
+        return location === destination
+            ? `be terminating at ${location}`
+            : `be approaching ${location} heading to ${destination}`;
+    }
+    return location === destination
+        ? `be terminating empty at ${location}`
+        : `be approaching ${location} heading empty to ${destination}`;
+}
 
-    return {
-        station1,
-        station2,
-        destination: prevEntry.destination,
-        state: apiConstants.NIS_STATIONS.includes(station1) || apiConstants.NIS_STATIONS.includes(station2)
-            ? 'nis'
-            : 'active'
+const LOCATION_REGEX = new RegExp(/^(?<station>[A-Z]{3})(_(?<platform>\d+))?$/);
+function parseLocation(location: string) {
+    const match = location.match(LOCATION_REGEX);
+    if (match?.groups) {
+        return {
+            station: match.groups.station,
+            platform: match.groups.platform ? +match.groups.platform : undefined
+        };
     }
 }
 
-export function expectedTrainStateToString({ station1, station2, destination, state }: ExpectedTrainState) {
-    const station1String = apiConstants.STATION_CODES[station1] || station1;
-    const station2String = apiConstants.STATION_CODES[station2] || station2;
-    let locationString: string;
-    if (station1 === station2) {
-        locationString = `at ${station1String}`;
-    } else {
-        locationString = `between ${station1String} and ${station2String}`;
-    }
-    if (state === "not-started")
-        return `stored ${locationString}, ready to leave in the morning.`;
-    if (state === "ended")
-        return `stored ${locationString}, finished for the day.`;
-    if (state === "starting")
-        return `${locationString}, preparing to start service.`;
-    if (state === "ending")
-        return `${locationString}, ending service.`;
-    if (state === "nis")
-        return `Not In Service ${locationString}.`;
-    if (station1 === destination) return `terminated at ${station1String}.`;
-    if (station1 === "FORMS") {
-        if (station2 === destination) return `terminated at but about to leave ${station2String}.`;
-        return `about to leave ${station2String} for ${destination}.`;
-    }
-    const destinationString = apiConstants.STATION_CODES[destination] || destination;
-    return `${locationString} heading to ${destinationString}.`;
+export function renderLocation(location: string) {
+    const parsedLocation = parseLocation(location);
+    if (!parsedLocation) return location;
+    const stationName = apiConstants.STATION_CODES[parsedLocation.station];
+    if (!stationName) return location;
+    if (parsedLocation.platform === undefined) return stationName;
+    return `${stationName} Platform ${parsedLocation.platform}`;
+}
+
+export function locationsMatch(location: string, destination: string) {
+    if (location === destination) return true;
+    const parsedLocation = parseLocation(location);
+    const parsedDestination = parseLocation(destination);
+    if (!parsedLocation || !parsedDestination) return false;
+    if (
+        parsedLocation.platform !== undefined &&
+        parsedDestination.platform !== undefined &&
+        parsedLocation.platform !== parsedDestination.platform
+    ) return false;
+    if (parsedLocation.station === parsedDestination.station) return true;
+    return MONUMENT_STATION_CODES.includes(parsedLocation.station) &&
+        MONUMENT_STATION_CODES.includes(parsedDestination.station);
 }
 
 export function calculateDifferenceToTimetable(
     trainTimetable: TrainTimetable,
-    time: string,
-    station: string,
-    destination: string
+    time: number,
+    location: string,
+    departed: boolean,
+    destinationStationCode: string
 ) {
-    if (!apiConstants.STATION_CODES[station] || !apiConstants.STATION_CODES[destination]) return Infinity;
     let smallestTimeDifference = Infinity;
-    for (const direction of TRAIN_DIRECTIONS) {
-        for (const route of trainTimetable[direction]) {
-            const withoutForms = Object.entries(route.stations)
-                .filter(([station]) => station !== "FORMS");
-            if (withoutForms.length) {
-                withoutForms.sort((a, b) => compareTimes(a[1], b[1]));
-                if (withoutForms[withoutForms.length - 1][0] !== destination) continue;
-            }
-            const stationTime = route.stations[station];
-            if (!stationTime) continue;
-            const timeDifference = compareTimes(time, stationTime);
-            if (Math.abs(timeDifference) < Math.abs(smallestTimeDifference)) {
-                smallestTimeDifference = timeDifference;
-            }
+    for (const entry of trainTimetable) {
+        if (!locationsMatch(entry.location, location)) continue;
+        if (!locationsMatch(entry.destination, destinationStationCode)) continue;
+        const entryTime = departed ? entry.departureTime : entry.arrivalTime;
+        if (!entryTime) continue;
+        const timeDifference = compareTimes(entryTime, time);
+        if (Math.abs(timeDifference) < Math.abs(smallestTimeDifference)) {
+            smallestTimeDifference = timeDifference;
         }
     }
     return smallestTimeDifference;
+}
+
+export function calculateDifferenceToTimetableFromTimesAPI(
+    trainTimetable: TrainTimetable,
+    apiData: TimesApiData,
+) {
+    const parsedLocation = parseTimesAPILocation(apiData.lastEvent.location);
+    if (parsedLocation) return calculateDifferenceToTimetable(
+        trainTimetable,
+        secondsSinceMidnight(apiData.lastEvent.time),
+        `${getStationCode(parsedLocation.station)}_${parsedLocation.platform}`,
+        ["DEPARTED", "READY_TO_START", "READY_TO_DEPART"].includes(
+            apiData.lastEvent.type.toUpperCase().replace(' ', '_')
+        ),
+        getStationCode(apiData.plannedDestinations[0].name)
+    );
+}
+
+export function calculateDifferenceToTimetableFromTrainStatusesAPI(
+    trainTimetable: TrainTimetable,
+    apiData: TrainStatusesApiData
+) {
+    const parsedLastSeen = parseLastSeen(apiData.lastSeen);
+    if (parsedLastSeen) return calculateDifferenceToTimetable(
+        trainTimetable,
+        parsedLastSeen.hours * 3600 + parsedLastSeen.minutes * 60,
+        `${getStationCode(parsedLastSeen.station)}_${parsedLastSeen.platform}`,
+        parsedLastSeen.state === 'Departed' || parsedLastSeen.state === 'Ready to start',
+        getStationCode(apiData.destination)
+    );
 }
 
 export function differenceToTimetableToString(difference: number) {

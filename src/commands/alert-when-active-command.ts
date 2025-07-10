@@ -1,7 +1,7 @@
 import {AutocompleteFocusedOption, ButtonInteraction, CommandInteraction} from "discord.js";
 import {alertSubscriptions, proxy, trainEmbed} from "../bot";
-import {lastHeartbeat, lastHistoryEntries} from "../cache";
-import {getTimetabledTrains} from "../timetable";
+import {getTodaysTimetable, lastHeartbeat, lastHistoryEntries} from "../cache";
+import {getTimetabledTrains, secondsSinceMidnight} from "../timetable";
 import {CollatedTrain} from "metro-api-client";
 
 export default async function command(interaction: CommandInteraction) {
@@ -20,9 +20,9 @@ export default async function command(interaction: CommandInteraction) {
     }
 }
 
-export function autoCompleteOptions(_: AutocompleteFocusedOption) {
+export async function autoCompleteOptions(_: AutocompleteFocusedOption) {
     const activeTrains = Object.keys(lastHistoryEntries);
-    return getTimetabledTrains(lastHeartbeat).filter(trn => !activeTrains.includes(trn));
+    return getTimetabledTrains(await getTodaysTimetable(), secondsSinceMidnight(lastHeartbeat)).filter(trn => !activeTrains.includes(trn));
 }
 
 export async function subscribeTo(

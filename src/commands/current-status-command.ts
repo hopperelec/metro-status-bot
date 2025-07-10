@@ -1,17 +1,19 @@
 import {ActionRowBuilder, AutocompleteFocusedOption, ButtonBuilder, ButtonStyle, CommandInteraction} from "discord.js";
-import {getStationCode, lastHistoryEntries, getTodaysTimetable, setLastHeartbeat} from "../cache";
-import {FullTrainResponse, parseLastSeen, parseTimesAPILocation} from "metro-api-client";
+import {lastHistoryEntries, getTodaysTimetable, setLastHeartbeat} from "../cache";
+import {FullTrainResponse} from "metro-api-client";
 import {proxy, trainEmbed} from "../bot";
 import {
-    calculateDifferenceToTimetable, differenceToTimetableToString,
+    calculateDifferenceToTimetableFromTimesAPI,
+    calculateDifferenceToTimetableFromTrainStatusesAPI,
+    differenceToTimetableToString,
     expectedTrainStateToString,
     getExpectedTrainState,
-    timeDateToStr, timeNumbersToStr
+    secondsSinceMidnight,
 } from "../timetable";
 
 export default async function command(interaction: CommandInteraction) {
     const trn = interaction.options.get('trn').value as string;
-    const trainTimetable = (await getTodaysTimetable())[trn];
+    const trainTimetable = (await getTodaysTimetable()).trains[trn];
 
     let train: FullTrainResponse;
     try {
@@ -34,8 +36,8 @@ export default async function command(interaction: CommandInteraction) {
     }
 
     if (trainTimetable) {
-        const timetabledStatus = getExpectedTrainState(trainTimetable, timeDateToStr(new Date()));
-        lines.push(`It should be ${expectedTrainStateToString(timetabledStatus)}`);
+        const timetabledStatus = getExpectedTrainState(trainTimetable, secondsSinceMidnight(new Date()));
+        lines.push(`It should ${expectedTrainStateToString(timetabledStatus)}`);
     } else {
         lines.push("This train is not timetabled to run today.");
     }
@@ -43,26 +45,12 @@ export default async function command(interaction: CommandInteraction) {
     if (train.status) {
         if (trainTimetable) {
             let differenceAccordingToTimes: number = undefined;
-            timesAPI: if (train.status.timesAPI) {
-                const parsedLocation = parseTimesAPILocation(train.status.timesAPI.lastEvent.location);
-                if (!parsedLocation) break timesAPI;
-                differenceAccordingToTimes = calculateDifferenceToTimetable(
-                    trainTimetable,
-                    timeDateToStr(train.status.timesAPI.lastEvent.time),
-                    getStationCode(parsedLocation.station, parsedLocation.platform),
-                    getStationCode(train.status.timesAPI.plannedDestinations[0].name)
-                );
+            if (train.status.timesAPI) {
+                differenceAccordingToTimes = calculateDifferenceToTimetableFromTimesAPI(trainTimetable, train.status.timesAPI);
             }
             let differenceAccordingToStatuses: number = undefined;
-            trainStatusesAPI: if (train.status.trainStatusesAPI) {
-                const parsedLastSeen = parseLastSeen(train.status.trainStatusesAPI.lastSeen);
-                if (!parsedLastSeen) break trainStatusesAPI;
-                differenceAccordingToStatuses = calculateDifferenceToTimetable(
-                    trainTimetable,
-                    timeNumbersToStr(parsedLastSeen.hours, parsedLastSeen.minutes),
-                    getStationCode(parsedLastSeen.station, parsedLastSeen.platform),
-                    getStationCode(train.status.trainStatusesAPI.destination)
-                );
+            if (train.status.trainStatusesAPI) {
+                differenceAccordingToStatuses = calculateDifferenceToTimetableFromTrainStatusesAPI(trainTimetable, train.status.trainStatusesAPI);
             }
             if (
                 (!(Number.isFinite(differenceAccordingToTimes) || Number.isFinite(differenceAccordingToStatuses))) ||

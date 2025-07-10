@@ -55,7 +55,7 @@ export async function registerCommands(client: Client) {
                 },
                 {
                     name: 'start-time',
-                    description: 'Start time to show history from, in HH:MM format',
+                    description: 'Start time to show history from, in HH:MM[:SS] format',
                     type: 3, // string
                 },
                 {
@@ -86,36 +86,60 @@ export async function registerCommands(client: Client) {
             name: 'train-timetable',
             description: 'Get the timetable for a train',
             options: [
-                TRN_OPTION,
                 {
-                    name: 'station',
-                    description: 'Station code',
+                    name: 'trns',
+                    description: 'One or more Train Running Numbers (TRNs) to get the timetable for, separated by commas.',
                     type: 3, // string
                     autocomplete: true,
                 },
                 {
-                    name: 'direction',
-                    description: 'Direction on the line',
+                    name: 'locations',
+                    description: 'One or more locations to filter by, separated by commas. Example: DEP,MMT,HOW_2',
                     type: 3, // string
-                    choices: [
-                        {name: 'In (towards South Shields or South Hylton)', value: 'in'},
-                        {name: 'Out (towards St James or Airport)', value: 'out'}
-                    ]
+                    autocomplete: true,
                 },
                 {
-                    name: 'day',
-                    description: 'Day of the week.',
+                    name: 'destinations',
+                    description: 'One or more destinations to filter by, separated by commas. Example: DEP,MMT,HOW_2',
                     type: 3, // string
-                    choices: [
-                        {name: 'Weekday', value: 'weekday'},
-                        {name: 'Saturday', value: 'saturday'},
-                        {name: 'Sunday', value: 'sunday'}
-                    ]
+                    autocomplete: true,
+                },
+                {
+                    name: 'in-service',
+                    description: 'Filter by whether entries are in service. Defaults to ignoring whether entries are in service.',
+                    type: 5, // boolean
+                },
+                {
+                    name: 'only-termini',
+                    description: 'Whether to only show when and where the train is terminating. Defaults to false.',
+                    type: 5, // boolean
+                },
+                {
+                    name: 'types',
+                    description: 'One or more types to filter by. 1 - Depot start, 2 - Passenger stop, 3 - ECS or skips, 4 - Depot end',
+                    type: 3, // string
+                    autocomplete: true,
+                },
+                {
+                    name: 'start-time',
+                    description: 'Start time, in HH:MM[:SS] format. Defaults to start of service.',
+                    type: 3, // string
+                },
+                {
+                    name: 'end-time',
+                    description: 'End time, in HH:MM[:SS] format. Defaults to end of service.',
+                    type: 3, // string
                 },
                 {
                     name: 'date',
                     description: 'Date, in YYYY-MM-DD format. Defaults to today.',
                     type: 3, // string
+                },
+                {
+                    name: 'limit',
+                    description: 'Maximum number of entries to list. Applied in reverse if `end-time` is set but not `start-time`',
+                    type: 4, // integer
+                    minValue: 1,
                 }
             ],
             contexts: [0, 1, 2]
@@ -180,9 +204,9 @@ export async function handleInteraction(interaction: Interaction) {
         } else if (interaction.commandName === 'train-status-history') {
             options = statusHistoryAutoComplete(focusedOption);
         } else if (interaction.commandName === 'alert-when-train-active') {
-            options = alertWhenActiveAutoComplete(focusedOption);
+            options = await alertWhenActiveAutoComplete(focusedOption);
         } else if (interaction.commandName === 'train-timetable') {
-            options = timetableAutoComplete(focusedOption);
+            options = await timetableAutoComplete(focusedOption);
         } else if (interaction.commandName === 'due-times') {
             options = await dueTimesAutoComplete(focusedOption);
         }

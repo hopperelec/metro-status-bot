@@ -15,8 +15,8 @@ importers:
         specifier: ^16.4.7
         version: 16.4.7
       metro-api-client:
-        specifier: ^1.0.0
-        version: 1.0.0
+        specifier: ^2.0.0
+        version: 2.0.0
     devDependencies:
       tslib:
         specifier: ^2.8.1
@@ -250,9 +250,9 @@ packages:
     resolution: {integrity: sha512-6GJGePDMxin/6VH1Dex7RqnZRguweO1BVKhXpBYwKcQbVLOZPLfeDr9vYSb9ra88kjs0NpT8FaEDz5rExedDkg==}
     engines: {node: '>=18.0.0'}
 
-  eventsource-parser@3.0.2:
-    resolution: {integrity: sha512-6RxOBZ/cYgd8usLwsEl+EC09Au/9BcmCKYF2/xbml6DNczf7nv0MQb+7BA2F+li6//I+28VNlQR37XfQtcAJuA==}
-    engines: {node: '>=18.0.0'}
+  eventsource-parser@3.0.3:
+    resolution: {integrity: sha512-nVpZkTMM9rF6AQ9gPJpFsNAMt48wIzB5TQgiTLdHiuO8XEDhUgZEhqKlZWXbIzo9VmJ/HvysHqEaVeD5v9TPvA==}
+    engines: {node: '>=20.0.0'}
 
   fast-deep-equal@3.1.3:
     resolution: {integrity: sha512-f3qQ9oQy9j2AhBe/H9VC91wLmKBCCU/gDOnKNAYG5hswO7BLKj09Hc5HYNz9cGI++xlpDCIgDaitVs03ATR84Q==}
@@ -274,8 +274,8 @@ packages:
   magic-bytes.js@1.10.0:
     resolution: {integrity: sha512-/k20Lg2q8LE5xiaaSkMXk4sfvI+9EGEykFS4b0CHHGWqDYU0bGUFSwchNOMA56D7TCs9GwVTkqe9als1/ns8UQ==}
 
-  metro-api-client@1.0.0:
-    resolution: {integrity: sha512-VDohpFp1xFogvFJe+17sOrPpJaOweho9hi2IipikzEX8aJ0w6vSbFBfUKw27fizRQ9xxaohe7I1snpcNzmCOMw==}
+  metro-api-client@2.0.0:
+    resolution: {integrity: sha512-MVViycLjqoZ5fVRtX7eDVvg5YwWP0vzgLTiaI95ITXtOpxBuA4G+idNQlWGC1wBqMx5KJ5ove52Yz7T+rgEESw==}
 
   resolve-pkg-maps@1.0.0:
     resolution: {integrity: sha512-seS2Tj26TBVOC2NIc2rOe2y2ZO7efxITtLZcGSOnHHNOQ7CkiUBfw0Iw2ck6xkIhPwLhKNLS8BO+hEpngQlqzw==}
@@ -510,9 +510,9 @@ snapshots:
 
   eventsource-client@1.1.3:
     dependencies:
-      eventsource-parser: 3.0.2
+      eventsource-parser: 3.0.3
 
-  eventsource-parser@3.0.2: {}
+  eventsource-parser@3.0.3: {}
 
   fast-deep-equal@3.1.3: {}
 
@@ -529,7 +529,7 @@ snapshots:
 
   magic-bytes.js@1.10.0: {}
 
-  metro-api-client@1.0.0:
+  metro-api-client@2.0.0:
     dependencies:
       eventsource-client: 1.1.3
 

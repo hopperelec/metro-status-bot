@@ -202,9 +202,9 @@ export async function announceTrainOnWrongDay(train: TrainEmbedData) {
     });
 }
 
-export async function announceTrainOnWrongDayDisappeared(train: TrainEmbedData, dayType: string) {
+export async function announceTrainOnWrongDayDisappeared(train: TrainEmbedData) {
     await mainChannel.send({
-        content: `🤔 Train T${train.trn} was active on a ${dayType}, which it isn't timetabled for. However, it has now disappeared. Below is it's status from before it disappeared.`,
+        content: `🤔 Train T${train.trn} was active despite not being timetabled for today. However, it has now disappeared. Below is it's status from before it disappeared.`,
         embeds: [trainEmbed(train)]
     });
 }

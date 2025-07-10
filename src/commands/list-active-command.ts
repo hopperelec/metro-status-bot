@@ -1,8 +1,13 @@
 import {CommandInteraction, EmbedBuilder} from "discord.js";
 import {proxy} from "../bot";
-import {FullTrainsResponse, parseLastSeen, parseTimesAPILocation} from "metro-api-client";
-import {calculateDifferenceToTimetable, getExpectedTrainState, timeDateToStr, timeNumbersToStr} from "../timetable";
-import {getStationCode, getTodaysTimetable} from "../cache";
+import {FullTrainsResponse} from "metro-api-client";
+import {
+    calculateDifferenceToTimetableFromTimesAPI,
+    calculateDifferenceToTimetableFromTrainStatusesAPI,
+    getTimetabledTrains,
+    secondsSinceMidnight
+} from "../timetable";
+import {getTodaysTimetable} from "../cache";
 
 function listTrains(trains: string[]) {
     return trains.length ? trains.sort().join(', ') : 'None';
@@ -12,12 +17,8 @@ export default async function command(interaction: CommandInteraction) {
     // TODO: This only needs to know in which APIs it is active, might need to add an option in the proxy for presence in props
     const activeTrains = await proxy.getTrains() as FullTrainsResponse;
 
-    const time = timeDateToStr(new Date());
-
     const todaysTimetable = await getTodaysTimetable();
-    const timetabledTrains = Object.entries(todaysTimetable)
-        .filter(([_, trainTimetable]) => getExpectedTrainState(trainTimetable, time).state === "active")
-        .map(([trn]) => trn);
+    const timetabledTrains = getTimetabledTrains(todaysTimetable, secondsSinceMidnight());
     const activeTrainsFromTimesAPI: string[] = [];
     const activeTrainsFromTrainStatusesAPI: string[] = [];
     const delayedTrains: {
@@ -37,29 +38,13 @@ export default async function command(interaction: CommandInteraction) {
             extraTrains.push(trn);
             continue;
         }
-        const trainTimetable = todaysTimetable[trn];
+        const trainTimetable = todaysTimetable.trains[trn];
         const secsOffTimetable: number[] = [];
         if (data.status.timesAPI) {
-            const parsedLocation = parseTimesAPILocation(data.status.timesAPI.lastEvent.location);
-            if (parsedLocation) {
-                secsOffTimetable.push(calculateDifferenceToTimetable(
-                    trainTimetable,
-                    timeDateToStr(data.status.timesAPI.lastEvent.time),
-                    getStationCode(parsedLocation.station, parsedLocation.platform),
-                    getStationCode(data.status.timesAPI.plannedDestinations[0].name)
-                ));
-            }
+            secsOffTimetable.push(calculateDifferenceToTimetableFromTimesAPI(trainTimetable, data.status.timesAPI));
         }
         if (data.status.trainStatusesAPI) {
-            const parsedLastSeen = parseLastSeen(data.status.trainStatusesAPI.lastSeen);
-            if (parsedLastSeen) {
-                secsOffTimetable.push(calculateDifferenceToTimetable(
-                    trainTimetable,
-                    timeNumbersToStr(parsedLastSeen.hours, parsedLastSeen.minutes),
-                    getStationCode(parsedLastSeen.station, parsedLastSeen.platform),
-                    getStationCode(data.status.trainStatusesAPI.destination)
-                ));
-            }
+            secsOffTimetable.push(calculateDifferenceToTimetableFromTrainStatusesAPI(trainTimetable, data.status.trainStatusesAPI));
         }
         const minsOffTimetable = [...new Set(
             secsOffTimetable

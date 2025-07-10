@@ -12,7 +12,7 @@ import {
 import {proxy, renderTimesAPILastSeen} from "../bot";
 import {getStationOptions, parseStationOption} from "./index";
 import {apiConstants} from "../cache";
-import {DUE_TIMES_PAGE_ROWS} from "../constants";
+import {DUE_TIMES_PAGE_ROWS, MONUMENT_STATION_CODES} from "../constants";
 
 const PROPS = [
     "lastChecked",
@@ -152,7 +152,7 @@ async function getPlatformPage(
     let stationName: string;
     let dueTimes: (BaseFilteredDueTime & { platform: PlatformNumber })[];
     try {
-        if (["MMT", "MTS", "MTW", "MTE"].includes(stationCode)) {
+        if (MONUMENT_STATION_CODES.includes(stationCode)) {
             stationCode = [1, 2].includes(platform) ? "MTS" : "MTW";
             stationName = "Monument";
         } else {

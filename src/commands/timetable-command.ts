@@ -161,7 +161,6 @@ export default async function command(interaction: CommandInteraction) {
         }
     }
 
-    let content = `## ${(date ? `Timetable for ${date.toISOString().split('T')[0]}` : "Today's timetable")}\n-# Based on ${dayTimetable.description}\n\`\`\``;
     const rows: {
         trn: string;
         location: string;
@@ -190,21 +189,25 @@ export default async function command(interaction: CommandInteraction) {
         });
     }
     rows.sort((a, b) => compareTimes(a.departureTime || a.arrivalTime, b.arrivalTime || b.departureTime));
+
     const longestTrnLength = Math.max(...rows.map(row => row.trn.length));
     const longestLocationLength = Math.max(...rows.map(row => row.location.length));
+    let codeblockContent = '';
     for (const row of rows) {
         if (!trns || trns.length > 1) {
-            content += `${row.trn.padEnd(longestTrnLength)} | `;
+            codeblockContent += `${row.trn.padEnd(longestTrnLength)} | `;
         }
-        content += `${row.location.padEnd(longestLocationLength)} | ${row.rest}\n`;
+        codeblockContent += `${row.location.padEnd(longestLocationLength)} | ${row.rest}\n`;
     }
-    content += '```';
+
+    const footer = `-# Based on ${dayTimetable.description}`;
+    const fullContent = `${footer}\n\`\`\`${codeblockContent}\`\`\``;
 
     await deferReply;
-    await interaction.editReply(content.length <= 2000 ? content : {
-        content: `The response is too long to display in a message so has been attached as a file. Please open the file or refine your search criteria.`,
+    await interaction.editReply(fullContent.length <= 2000 ? fullContent : {
+        content: `The response is too long to display in a message so has been attached as a file. Please open the file or refine your search criteria.\n${footer}`,
         files: [{
-            attachment: Buffer.from(content, 'utf-8'),
+            attachment: Buffer.from(codeblockContent, 'utf-8'),
             name: 'timetable.txt'
         }],
     }).catch(console.error);

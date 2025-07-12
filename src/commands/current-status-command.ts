@@ -43,17 +43,17 @@ export default async function command(interaction: CommandInteraction) {
 
     if (train.status) {
         if (trainTimetable) {
-            let differenceAccordingToTimes: number = undefined;
+            let differenceAccordingToTimes: number;
             if (train.status.timesAPI) {
                 differenceAccordingToTimes = calculateDifferenceToTimetableFromTimesAPI(trainTimetable, train.status.timesAPI);
             }
-            let differenceAccordingToStatuses: number = undefined;
+            let differenceAccordingToStatuses: number;
             if (train.status.trainStatusesAPI) {
                 differenceAccordingToStatuses = calculateDifferenceToTimetableFromTrainStatusesAPI(trainTimetable, train.status.trainStatusesAPI);
             }
             if (
-                (!(Number.isFinite(differenceAccordingToTimes) || Number.isFinite(differenceAccordingToStatuses))) ||
-                (Math.abs(differenceAccordingToTimes - differenceAccordingToStatuses) < 60)
+                !(Number.isFinite(differenceAccordingToTimes) || Number.isFinite(differenceAccordingToStatuses)) ||
+                Math.abs(differenceAccordingToTimes - differenceAccordingToStatuses) < 60
             ) {
                 lines.push(`This train is ${renderDifferenceToTimetable(differenceAccordingToTimes)}`);
             } else {

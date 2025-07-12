@@ -95,16 +95,14 @@ export function calculateDifferenceToTimetable(
     trainTimetable: TrainTimetable,
     time: number,
     location: string,
-    departed: boolean,
-    destinationStationCode: string
+    departed: boolean
 ) {
     let smallestTimeDifference = Infinity;
     for (const entry of trainTimetable) {
         if (!locationsMatch(entry.location, location)) continue;
-        if (!locationsMatch(entry.destination, destinationStationCode)) continue;
         const entryTime = departed ? entry.departureTime : entry.arrivalTime;
         if (!entryTime) continue;
-        const timeDifference = compareTimes(entryTime, time);
+        const timeDifference = compareTimes(time, entryTime);
         if (Math.abs(timeDifference) < Math.abs(smallestTimeDifference)) {
             smallestTimeDifference = timeDifference;
         }
@@ -123,8 +121,7 @@ export function calculateDifferenceToTimetableFromTimesAPI(
         `${getStationCode(parsedLocation.station)}_${parsedLocation.platform}`,
         ["DEPARTED", "READY_TO_START", "READY_TO_DEPART"].includes(
             apiData.lastEvent.type.toUpperCase().replace(' ', '_')
-        ),
-        getStationCode(apiData.plannedDestinations[0].name)
+        )
     );
 }
 
@@ -137,7 +134,6 @@ export function calculateDifferenceToTimetableFromTrainStatusesAPI(
         trainTimetable,
         parsedLastSeen.hours * 3600 + parsedLastSeen.minutes * 60,
         `${getStationCode(parsedLastSeen.station)}_${parsedLastSeen.platform}`,
-        parsedLastSeen.state === 'Departed' || parsedLastSeen.state === 'Ready to start',
-        getStationCode(apiData.destination)
+        parsedLastSeen.state === 'Departed' || parsedLastSeen.state === 'Ready to start'
     );
 }

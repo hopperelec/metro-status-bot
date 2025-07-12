@@ -6,7 +6,7 @@ import {
     CollatedTrain, ExpectedTrainState,
     TimesApiData
 } from "metro-api-client";
-import {parseLocation} from "./timetable";
+import {locationsMatch, parseLocation} from "./timetable";
 
 export type TrainEmbedData = {
     trn: string;
@@ -128,29 +128,18 @@ export function renderLocation(location: string) {
 export function renderExpectedTrainState(state: ExpectedTrainState) {
     const location = renderLocation(state.location);
     const destination = renderLocation(state.destination);
-    if (state.event === 'DEPARTED') {
-        return state.inService
-            ? `have departed from ${location} heading to ${destination}`
-            : `have departed from ${location} heading empty to ${destination}`;
-    }
-    if (state.event === 'ARRIVED') {
-        if (state.inService) {
-            return location === destination
-                ? `be terminated at ${location}`
-                : `be at ${location} heading to ${destination}`;
-        }
-        return location === destination
-            ? `be terminated at ${location} not in service`
-            : `be at ${location} heading empty to ${destination}`;
-    }
-    if (state.inService) {
-        return location === destination
-            ? `be terminating at ${location}`
-            : `be approaching ${location} heading to ${destination}`;
-    }
-    return location === destination
-        ? `be terminating empty at ${location}`
-        : `be approaching ${location} heading empty to ${destination}`;
+    const STATE_PREFIX_MAP = {
+        APPROACHING: locationsMatch(location, destination)
+            ? `be approaching ${location} heading`
+            : `be terminating at ${destination} heading`,
+        ARRIVED: `be at ${location} heading`,
+        DEPARTED: `have departed from ${location} heading`,
+        TERMINATED: `be terminated at ${location}, about to head`,
+    };
+    const prefix = STATE_PREFIX_MAP[state.event];
+    return state.inService
+        ? `${prefix} towards ${destination}`
+        : `${prefix} empty towards ${destination}`;
 }
 
 export function renderDifferenceToTimetable(difference: number) {

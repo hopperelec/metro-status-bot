@@ -5,7 +5,6 @@ import {
     parseLastSeen, parseTimesAPILocation,
     TimesApiData, TrainStatusesApiData,
     TrainTimetable,
-    TrainTimetableEntry
 } from "metro-api-client";
 import {MONUMENT_STATION_CODES} from "./constants";
 
@@ -28,51 +27,42 @@ export function getTimetabledTrains(timetable: DayTimetable, time: number) {
 }
 
 export function getExpectedTrainState(trainTimetable: TrainTimetable, time: number): ExpectedTrainState {
-    let index = 0;
-    let state: ExpectedTrainState;
-    let entry: TrainTimetableEntry;
-    while (index < trainTimetable.length) {
-        entry = trainTimetable[index];
+    for (const [index, entry] of trainTimetable.entries()) {
         if (entry.arrivalTime && compareTimes(entry.arrivalTime, time) > 0) {
             // There should always be a previous entry because the first entry should not have an arrival time
             const previousEntry = trainTimetable[index - 1];
             if (compareTimes(entry.arrivalTime, time) > compareTimes(time, previousEntry.departureTime)) {
-                state = {
+                return {
                     event: 'DEPARTED',
                     location: previousEntry.location,
                     inService: previousEntry.inService,
                     destination: previousEntry.destination,
                 };
-            } else {
-                state = {
-                    event: 'APPROACHING',
-                    location: entry.location,
-                    inService: previousEntry.inService,
-                    destination: entry.destination,
-                };
             }
-        } else if (entry.departureTime && compareTimes(entry.departureTime, time) > 0) {
-            state = {
-                event: 'ARRIVED',
+            return {
+                event: 'APPROACHING',
+                location: entry.location,
+                inService: previousEntry.inService,
+                destination: entry.destination,
+            };
+        }
+        if (entry.departureTime && compareTimes(entry.departureTime, time) > 0) {
+            return {
+                event: entry.arrivalTime ? 'ARRIVED' : 'TERMINATED',
                 location: entry.location,
                 inService: entry.inService,
                 destination: entry.destination,
             }
         }
-        if (state) break;
-        index++;
     }
-    if (!state) {
-        // If we reach here, the train has already departed from the last station
-        const lastEntry = trainTimetable[trainTimetable.length - 1];
-        return {
-            event: lastEntry.departureTime && compareTimes(lastEntry.departureTime, time) <= 0 ? 'DEPARTED' : 'ARRIVED',
-            location: lastEntry.location,
-            inService: lastEntry.inService,
-            destination: lastEntry.destination,
-        };
-    }
-    return state;
+    // If we reach here, the train has already departed from the last station
+    const lastEntry = trainTimetable[trainTimetable.length - 1];
+    return {
+        event: lastEntry.departureTime && compareTimes(lastEntry.departureTime, time) <= 0 ? 'DEPARTED' : 'ARRIVED',
+        location: lastEntry.location,
+        inService: lastEntry.inService,
+        destination: lastEntry.destination,
+    };
 }
 
 const LOCATION_REGEX = new RegExp(/^(?<station>[A-Z]{3})(_(?<platform>\d+))?$/);

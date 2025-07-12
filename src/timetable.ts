@@ -75,36 +75,8 @@ export function getExpectedTrainState(trainTimetable: TrainTimetable, time: numb
     return state;
 }
 
-export function expectedTrainStateToString(state: ExpectedTrainState) {
-    const location = renderLocation(state.location);
-    const destination = renderLocation(state.destination);
-    if (state.event === 'DEPARTED') {
-        return state.inService
-            ? `have departed from ${location} heading to ${destination}`
-            : `have departed from ${location} heading empty to ${destination}`;
-    }
-    if (state.event === 'ARRIVED') {
-        if (state.inService) {
-            return location === destination
-                ? `be terminated at ${location}`
-                : `be at ${location} heading to ${destination}`;
-        }
-        return location === destination
-            ? `be terminated at ${location} not in service`
-            : `be at ${location} heading empty to ${destination}`;
-    }
-    if (state.inService) {
-        return location === destination
-            ? `be terminating at ${location}`
-            : `be approaching ${location} heading to ${destination}`;
-    }
-    return location === destination
-        ? `be terminating empty at ${location}`
-        : `be approaching ${location} heading empty to ${destination}`;
-}
-
 const LOCATION_REGEX = new RegExp(/^(?<station>[A-Z]{3})(_(?<platform>\d+))?$/);
-function parseLocation(location: string) {
+export function parseLocation(location: string) {
     const match = location.match(LOCATION_REGEX);
     if (match?.groups) {
         return {
@@ -112,15 +84,6 @@ function parseLocation(location: string) {
             platform: match.groups.platform ? +match.groups.platform : undefined
         };
     }
-}
-
-export function renderLocation(location: string) {
-    const parsedLocation = parseLocation(location);
-    if (!parsedLocation) return location;
-    const stationName = apiConstants.STATION_CODES[parsedLocation.station];
-    if (!stationName) return location;
-    if (parsedLocation.platform === undefined) return stationName;
-    return `${stationName} Platform ${parsedLocation.platform}`;
 }
 
 export function locationsMatch(location: string, destination: string) {
@@ -187,13 +150,4 @@ export function calculateDifferenceToTimetableFromTrainStatusesAPI(
         parsedLastSeen.state === 'Departed' || parsedLastSeen.state === 'Ready to start',
         getStationCode(apiData.destination)
     );
-}
-
-export function differenceToTimetableToString(difference: number) {
-    if (difference === Infinity) return "not running to timetable."
-    if (Math.abs(difference) <= 60) return "on time.";
-    if (difference > 120) return `running ${Math.round(difference/60)} minutes late.`;
-    if (difference > 0) return `running ${difference} seconds late.`;
-    if (difference < -120) return `${Math.round(-difference/60)} minutes early.`;
-    return `${-difference} seconds early.`;
 }

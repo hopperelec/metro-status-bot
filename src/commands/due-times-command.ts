@@ -9,10 +9,11 @@ import {
     DueTime,
     PlatformNumber, TimesApiData
 } from "metro-api-client";
-import {proxy, renderTimesAPILastSeen} from "../bot";
-import {getStationOptions, parseStationOption} from "./index";
+import {proxy} from "../bot";
+import {parseStationOption} from "./index";
 import {apiConstants} from "../cache";
 import {DUE_TIMES_PAGE_ROWS, MONUMENT_STATION_CODES} from "../constants";
+import {renderPlatform, renderTimesAPILastSeen} from "../rendering";
 
 const PROPS = [
     "lastChecked",
@@ -149,14 +150,10 @@ async function getPlatformPage(
     stationCode: string, platform: PlatformNumber, page = "first"
 ) {
     const embedBuilder = new EmbedBuilder();
-    let stationName: string;
     let dueTimes: (BaseFilteredDueTime & { platform: PlatformNumber })[];
     try {
         if (MONUMENT_STATION_CODES.includes(stationCode)) {
-            stationCode = [1, 2].includes(platform) ? "MTS" : "MTW";
-            stationName = "Monument";
-        } else {
-            stationName = apiConstants.STATION_CODES[stationCode];
+            stationCode = platform === 1 || platform === 2 ? "MTS" : "MTW";
         }
         const response = await proxy.getPlatformDueTimes(
             `${stationCode};${platform}`,
@@ -175,7 +172,7 @@ async function getPlatformPage(
     if (page === "first") pageNum = 1;
     else if (page === "last") pageNum = numPages;
     else pageNum = Math.min(+page, numPages);
-    embedBuilder.setTitle(`Next trains due at ${stationName} platform ${platform} - Page ${pageNum}/${numPages}`);
+    embedBuilder.setTitle(`Next trains due at ${renderPlatform(stationCode, platform)} - Page ${pageNum}/${numPages}`);
     if (dueTimes.length === 0) {
         embedBuilder.setDescription("*No trains due at this platform.*");
     } else {
@@ -212,7 +209,9 @@ export default async function command(interaction: CommandInteraction) {
 }
 
 export async function autoCompleteOptions(focusedOption: AutocompleteFocusedOption) {
-    return getStationOptions();
+    return Object.entries(apiConstants.STATION_CODES)
+        .filter(([code]) => code !== "MTE" && code !== "MTN") // These are just aliases for MTW and MTS respectively
+        .map(([code, name]) => `${code} - ${name}`)
 }
 
 export async function button(interaction: ButtonInteraction, rest: string[]) {

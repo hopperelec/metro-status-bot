@@ -1,15 +1,14 @@
 import {ActionRowBuilder, AutocompleteFocusedOption, ButtonBuilder, ButtonStyle, CommandInteraction} from "discord.js";
 import {lastHistoryEntries, getTodaysTimetable, setLastHeartbeat} from "../cache";
 import {FullTrainResponse} from "metro-api-client";
-import {proxy, trainEmbed} from "../bot";
+import {proxy} from "../bot";
 import {
     calculateDifferenceToTimetableFromTimesAPI,
     calculateDifferenceToTimetableFromTrainStatusesAPI,
-    differenceToTimetableToString,
-    expectedTrainStateToString,
     getExpectedTrainState,
     secondsSinceMidnight,
 } from "../timetable";
+import {renderDifferenceToTimetable, renderExpectedTrainState, trainEmbed} from "../rendering";
 
 export default async function command(interaction: CommandInteraction) {
     const trn = interaction.options.get('trn').value as string;
@@ -37,7 +36,7 @@ export default async function command(interaction: CommandInteraction) {
 
     if (trainTimetable) {
         const timetabledStatus = getExpectedTrainState(trainTimetable, secondsSinceMidnight(new Date()));
-        lines.push(`It should ${expectedTrainStateToString(timetabledStatus)}.`);
+        lines.push(`It should ${renderExpectedTrainState(timetabledStatus)}.`);
     } else {
         lines.push("This train is not timetabled to run today.");
     }
@@ -56,13 +55,13 @@ export default async function command(interaction: CommandInteraction) {
                 (!(Number.isFinite(differenceAccordingToTimes) || Number.isFinite(differenceAccordingToStatuses))) ||
                 (Math.abs(differenceAccordingToTimes - differenceAccordingToStatuses) < 60)
             ) {
-                lines.push(`This train is ${differenceToTimetableToString(differenceAccordingToTimes)}`);
+                lines.push(`This train is ${renderDifferenceToTimetable(differenceAccordingToTimes)}`);
             } else {
                 if (differenceAccordingToTimes !== undefined) {
-                    lines.push(`According to the times API, this train is ${differenceToTimetableToString(differenceAccordingToTimes)}`);
+                    lines.push(`According to the times API, this train is ${renderDifferenceToTimetable(differenceAccordingToTimes)}`);
                 }
                 if (differenceAccordingToStatuses !== undefined) {
-                    lines.push(`According to the statuses API, this train is ${differenceToTimetableToString(differenceAccordingToStatuses)}`);
+                    lines.push(`According to the statuses API, this train is ${renderDifferenceToTimetable(differenceAccordingToStatuses)}`);
                 }
             }
         }

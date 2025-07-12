@@ -7,8 +7,9 @@ import {
 } from "discord.js";
 import {apiConstants, trainsWithHistory} from "../cache";
 import {HISTORY_PAGE_ROWS} from "../constants";
-import {proxy, renderTimesAPILastSeen} from "../bot";
+import {proxy} from "../bot";
 import {parseLastSeen, PropsFilter, TimeFilter, TimesApiData, TrainHistoryOptions} from "metro-api-client";
+import {renderPlatform, renderTimesAPILastSeen} from "../rendering";
 
 interface RenderedEntry {
     date: Date;
@@ -126,7 +127,7 @@ export const PROPERTY_CHOICES: Record<string, FetchPropertyChoice | IterativePro
         get(data: { trainStatusesAPI?: { lastSeen: string } }) {
             if (!data.trainStatusesAPI?.lastSeen) return "*Not showing in the train statuses API*";
             const parsedLastSeen = parseLastSeen(data.trainStatusesAPI.lastSeen);
-            if (parsedLastSeen) return `${parsedLastSeen.station} Platform ${parsedLastSeen.platform}`;
+            if (parsedLastSeen) return renderPlatform(parsedLastSeen.station, parsedLastSeen.platform);
             return "*Couldn't parse the last seen status*";
         }
     })

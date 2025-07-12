@@ -220,11 +220,6 @@ export async function handleInteraction(interaction: Interaction) {
     }
 }
 
-export function getStationOptions() {
-    return Object.entries(apiConstants.STATION_CODES)
-        .map(([code, name]) => `${code} - ${name}`);
-}
-
 const STATION_REGEX = new RegExp(/^([A-Z]{3})( - .+)?/i);
 export function parseStationOption(station: string) {
     const match = station.match(STATION_REGEX);

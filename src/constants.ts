@@ -9,4 +9,4 @@ export const API_CODES = {
     gateway: "the gateway (a prerequisite of the train statuses API)",
 }
 
-export const MONUMENT_STATION_CODES = ["MMT","MTS","MTW","MTE"];
+export const MONUMENT_STATION_CODES = ["MMT","MTS","MTW","MTN","MTE"];

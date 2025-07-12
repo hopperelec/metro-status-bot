@@ -1,15 +1,13 @@
 import {config} from "dotenv";
-import {Client, EmbedBuilder, Events, GatewayIntentBits, TextChannel} from "discord.js";
+import {Client, Events, GatewayIntentBits, TextChannel} from "discord.js";
 import {handleInteraction, registerCommands} from "./commands";
 import {
-    ActiveTrainHistoryStatus,
-    CollatedTrain,
     HeartbeatErrorPayload, HeartbeatWarningsPayload,
-    MetroApiClient, TimesApiData
+    MetroApiClient
 } from "metro-api-client";
-import {apiConstants, lastHeartbeat} from "./cache";
 import {startMonitoring} from "./monitoring";
-import {API_CODES, MAX_PLANNED_DESTINATIONS} from "./constants";
+import {API_CODES} from "./constants";
+import {listTrns, prevTrainStatusEmbed, trainEmbed, TrainEmbedData} from "./rendering";
 
 config();
 const MAIN_CHANNEL_ID = process.env.MAIN_CHANNEL_ID;
@@ -27,113 +25,6 @@ const client = new Client({
     ]
 });
 let mainChannel: TextChannel;
-
-export type TrainEmbedData = {
-    trn: string;
-    status: CollatedTrain | ActiveTrainHistoryStatus;
-    date: Date;
-}
-
-export function renderTimesAPILastSeen(data: TimesApiData["lastEvent"]) {
-    return `${data.type.replaceAll("_", " ")} ${data.location} at ${data.time.toLocaleTimeString('en-GB')}`;
-}
-
-export function trainEmbed(train: TrainEmbedData) {
-    const embed = new EmbedBuilder()
-        .setTitle(`T${train.trn}`);
-
-    let footer = `Last updated ${train.date.toLocaleTimeString()}`;
-    if (train.date.getTime() !== lastHeartbeat.getTime()) {
-        footer = `${footer}, last checked ${lastHeartbeat.toLocaleTimeString()}`;
-    }
-    embed.setFooter({ text: footer });
-
-    if (train.status.timesAPI && train.status.trainStatusesAPI) {
-        embed.setDescription("This train is showing in both APIs. Sometimes these APIs have conflicting data.\nFields marked with ⌛ are from the times API, and fields marked with 📍 are from the train statuses API.");
-    } else if (train.status.timesAPI) {
-        embed.setDescription("This train is only showing in the times API (⌛).");
-    } else if (train.status.trainStatusesAPI) {
-        embed.setDescription("This train is only showing in the train statuses API (📍).");
-    }
-
-    if (train.status.timesAPI) {
-        const data = train.status.timesAPI;
-        let plannedDestinationsLines = data.plannedDestinations
-            .map(dest => `${dest.name} from ${renderPlatformCode(dest.from.platformCode)} at ${dest.from.time.toLocaleTimeString('en-GB')}`);
-        if (plannedDestinationsLines.length > MAX_PLANNED_DESTINATIONS) {
-            const CUTOFF = Math.floor(MAX_PLANNED_DESTINATIONS / 2);
-            plannedDestinationsLines = [
-                ...plannedDestinationsLines.slice(0, CUTOFF),
-                `...${plannedDestinationsLines.length - CUTOFF} more...`,
-                ...plannedDestinationsLines.slice(plannedDestinationsLines.length - CUTOFF)
-            ];
-        }
-        embed.addFields(
-            {
-                name: "⌛ Last seen",
-                value: renderTimesAPILastSeen(data.lastEvent)
-            },
-            {
-                name: "⌛ Planned destinations",
-                value: plannedDestinationsLines.join("\n")
-            }
-        );
-        if ('nextPlatforms' in data) {
-            const nextPlatformStrings = data.nextPlatforms.map(nextPlatform => renderPlatformCode(nextPlatform.code));
-            let nextPlatformsString = nextPlatformStrings.join(", ");
-            let endIndex = nextPlatformStrings.length - 1;
-            while (nextPlatformsString.length > 1024) { // Discord embed field value length limit
-                nextPlatformsString = [
-                    ...nextPlatformStrings.slice(0, endIndex--),
-                    `... ${nextPlatformStrings.length - endIndex - 1} more`
-                ].join(", ");
-            }
-            embed.addFields(
-                {
-                    name: "⌛ Next Platforms",
-                    value: nextPlatformsString,
-                }
-            );
-        }
-    }
-
-    if (train.status.trainStatusesAPI) {
-        const data = train.status.trainStatusesAPI;
-        embed.addFields(
-            {
-                name: "📍 Current destination",
-                value: data.destination
-            },
-            {
-                name: "📍 Last seen",
-                value: data.lastSeen
-            }
-        )
-    }
-    return embed;
-}
-
-function prevTrainStatusEmbed(train: TrainEmbedData) {
-    if (train.status)
-        return trainEmbed(train).setTitle(`T${train.trn} (previous status)`)
-    return new EmbedBuilder()
-        .setTitle(`T${train.trn} (previous status)`)
-        .setDescription("No previous status available.");
-}
-
-const PLATFORM_CODE_REGEX = /^(?<station>[A-Z]{3});(?<platform>[1-4])$/;
-
-function renderPlatformCode(code: string) {
-    const parsed = code.match(PLATFORM_CODE_REGEX);
-    if (!parsed?.groups) return code;
-    const stationName = apiConstants.STATION_CODES[parsed.groups.station];
-    if (!stationName) return code;
-    return `${stationName} P${parsed.groups.platform}`;
-}
-
-function listTrns(trns: Set<string>) {
-    return `T${Array.from(trns).sort().join(", T")}`;
-}
 
 client.once(Events.ClientReady, async () => {
     console.log('Bot is ready!');

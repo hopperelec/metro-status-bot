@@ -1,8 +1,9 @@
 import {AutocompleteFocusedOption, ButtonInteraction, CommandInteraction} from "discord.js";
-import {alertSubscriptions, proxy, trainEmbed} from "../bot";
+import {alertSubscriptions, proxy} from "../bot";
 import {getTodaysTimetable, lastHeartbeat, lastHistoryEntries} from "../cache";
 import {getTimetabledTrains, secondsSinceMidnight} from "../timetable";
 import {CollatedTrain} from "metro-api-client";
+import {trainEmbed} from "../rendering";
 
 export default async function command(interaction: CommandInteraction) {
     const trn = interaction.options.get('trn').value as string;

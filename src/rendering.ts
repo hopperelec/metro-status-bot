@@ -130,8 +130,8 @@ export function renderExpectedTrainState(state: ExpectedTrainState) {
     const destination = renderLocation(state.destination);
     const STATE_PREFIX_MAP = {
         APPROACHING: locationsMatch(location, destination)
-            ? `be approaching ${location} heading`
-            : `be terminating at ${destination} heading`,
+            ? `be terminating at ${location}`
+            : `be approaching ${location} heading`,
         ARRIVED: `be at ${location} heading`,
         DEPARTED: `have departed from ${location} heading`,
         TERMINATED: `be terminated at ${location}, about to head`,

@@ -28,8 +28,13 @@ function parseTime(timeString: string): number | undefined {
     return time;
 }
 
+const T1xx_REGEX = /^T1\d\d$/
+
 export default async function command(interaction: CommandInteraction) {
-    const trns = (interaction.options.get('trns')?.value as string | undefined)?.split(',').map(trn => trn.trim());
+    const trns = (interaction.options.get('trns')?.value as string | undefined)?.split(',').map(trn => {
+        trn = trn.trim();
+        return T1xx_REGEX.test(trn) ? trn.substring(1) : trn; // Remove leading 'T' if present
+    });
 
     const locationsString = interaction.options.get('locations')?.value as string | undefined;
     const locations = locationsString ? locationsString.split(',').map(loc => loc.trim()) : undefined;
@@ -126,7 +131,8 @@ export default async function command(interaction: CommandInteraction) {
         }
         for (const trn of (trns || Object.keys(todaysTimetable.trains))) {
             const trainTimetable = todaysTimetable.trains[trn];
-            dayTimetable.trains[trn] = trainTimetable ? trainTimetable.filter(entry => !(
+            if (!trainTimetable) continue;
+            let filteredTimetable = trainTimetable.filter(entry => !(
                 (locations && !locations.some(loc => locationsMatch(entry.location, loc))) ||
                 (destinations && !destinations.some(dest => locationsMatch(entry.destination, dest))) ||
                 (inService !== undefined && entry.inService !== inService) ||
@@ -134,14 +140,14 @@ export default async function command(interaction: CommandInteraction) {
                 (types && !types.has(entry.type)) ||
                 (startTime !== undefined && compareTimes(entry.arrivalTime || entry.departureTime, startTime) < 0) ||
                 (endTime !== undefined && compareTimes(entry.departureTime || entry.arrivalTime, endTime) > 0)
-            )) : [];
-            if (!(dayTimetable.trains[trn]?.length || trns)) {
-                delete dayTimetable.trains[trn];
-            } else if (limit) {
-                dayTimetable.trains[trn] = startTime === undefined && endTime !== undefined
-                    ? dayTimetable.trains[trn].slice(-limit)
-                    : dayTimetable.trains[trn].slice(0, limit);
+            ));
+            if (!filteredTimetable.length) continue;
+            if (limit) {
+                filteredTimetable = startTime === undefined && endTime !== undefined
+                    ? filteredTimetable.slice(-limit)
+                    : filteredTimetable.slice(0, limit);
             }
+            dayTimetable.trains[trn] = filteredTimetable;
         }
     }
 

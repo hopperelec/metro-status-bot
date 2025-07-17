@@ -273,7 +273,15 @@ async function getPage(
     trn: string, historyPropertyName: string, range: string = "last"
 ): Promise<BaseMessageOptionsWithPoll> {
     const historyProperty = PROPERTY_CHOICES[historyPropertyName];
-    if (!historyProperty) throw new Error(`Invalid property: ${historyPropertyName}`);
+    if (!historyProperty) {
+        // Somehow, the property was "last" one time.
+        // The only way I was able to reproduce this was by passing a TRN of `123:last`.
+        // However, I doubt that this is what actually caused it.
+        // So, in case it happens again and to help with debugging, I'll log all the parameters.
+        console.error(`Invalid property: ${historyPropertyName}`);
+        console.log(`getPage("${trn}", "${historyPropertyName}", "${range}")`);
+        return { content: `Invalid property: ${historyPropertyName}` };
+    }
 
     let time: TrainHistoryOptions["time"];
     let timeDescription: string;
@@ -363,6 +371,15 @@ function timeStringToDate(time: string) {
 }
 
 export default async function command(interaction: CommandInteraction) {
+    const trn = interaction.options.get('trn').value as string;
+    if (trn.includes(':')) {
+        await interaction.reply({
+            content: "TRN cannot contain a colon.",
+            flags: ["Ephemeral"]
+        }).catch(console.error);
+        return;
+    }
+
     const startDate = interaction.options.get('start-date')?.value as string;
     const startTime = interaction.options.get('start-time')?.value as string;
     const endDate = interaction.options.get('end-date')?.value as string;
@@ -416,7 +433,7 @@ export default async function command(interaction: CommandInteraction) {
     }
     const deferReply = interaction.deferReply().catch(console.error);
     const page = await getPage(
-        interaction.options.get('trn').value as string,
+        trn,
         interaction.options.get('property').value as string,
         from || to ? `${from?.getTime() || ''}...${to?.getTime() || ''}` : undefined,
     );

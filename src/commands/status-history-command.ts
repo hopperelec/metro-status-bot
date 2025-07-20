@@ -324,7 +324,7 @@ async function getPage(
     const lines = [`**Train T${trn} history - ${historyProperty.displayName} - ${timeDescription}**`];
     if (fetchResult?.entries.length) {
         for (const entry of fetchResult.entries) {
-            lines.push(`- [${new Date(entry.date).toTimeString().split(' ')[0]}] ${entry.rendered}`)
+            lines.push(`- [${formatDate(entry.date)}] ${entry.rendered}`)
         }
         prevButton
             .setCustomId(`${buttonIdPrefix}:...${fetchResult.entries[0].date.getTime() - 1}`)

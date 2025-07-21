@@ -309,9 +309,23 @@ async function getPage(
         throw new Error(`Invalid range: ${range}`);
     }
 
-    const fetchResult = "customFetch" in historyProperty
-        ? await historyProperty.customFetch(trn, time)
-        : await defaultFetch(trn, time, historyProperty);
+    let fetchResult: {
+        veryFirstEntry: Date
+        entries: RenderedEntry[]
+    };
+    try {
+        fetchResult = "customFetch" in historyProperty
+            ? await historyProperty.customFetch(trn, time)
+            : await defaultFetch(trn, time, historyProperty);
+    } catch (error) {
+        // This is a band-aid fix.
+        // Ideally, different types of errors should be handled differently.
+        // However, that will require changes to the proxy.
+        console.error(`Error fetching history for TRN ${trn} and property ${historyPropertyName}:`, error);
+        return {
+            content: `Error fetching history: ${error instanceof Error ? error.message : error}`,
+        };
+    }
 
     const buttonIdPrefix = `history:${trn}:${historyPropertyName}`;
     const prevButton = new ButtonBuilder()

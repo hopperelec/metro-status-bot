@@ -216,7 +216,7 @@ export async function handleInteraction(interaction: Interaction) {
                 .filter(choice => choice.toLowerCase().includes(prompt))
                 .map(choice => ({name: choice, value: choice}))
                 .slice(0, 25)
-        )
+        ).catch(console.error);
     }
 }
 

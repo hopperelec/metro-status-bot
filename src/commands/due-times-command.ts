@@ -126,7 +126,7 @@ async function getStationPage(
     if (page === "first") pageNum = 1;
     else if (page === "last") pageNum = numPages;
     else pageNum = Math.min(+page, numPages);
-    embedBuilder.setTitle(`Next trains due at ${apiConstants.STATION_CODES[stationCode]} - Page ${pageNum}/${numPages}`);
+    embedBuilder.setTitle(`Next trains due at ${apiConstants.LOCATION_ABBREVIATIONS[stationCode] || stationCode} - Page ${pageNum}/${numPages}`);
     if (dueTimes.length === 0) {
         embedBuilder.setDescription("*No trains due at this station.*");
     } else {
@@ -209,9 +209,12 @@ export default async function command(interaction: CommandInteraction) {
 }
 
 export async function autoCompleteOptions(focusedOption: AutocompleteFocusedOption) {
-    return Object.entries(apiConstants.STATION_CODES)
-        .filter(([code]) => code !== "MTE" && code !== "MTN") // These are just aliases for MTW and MTS respectively
-        .map(([code, name]) => `${code} - ${name}`)
+    return apiConstants.PASSENGER_STOPS
+        .filter((code) =>
+            code !== "MTE" && // Alias for MTW
+            code !== "MTN" && // Alias for MTS
+            code !== "PJC"    // Not shown in times API
+        ).map(code => `${code} - ${apiConstants.LOCATION_ABBREVIATIONS[code]}`)
 }
 
 export async function button(interaction: ButtonInteraction, rest: string[]) {

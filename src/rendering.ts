@@ -106,11 +106,11 @@ export function listTrns(trns: Set<string>) {
 }
 
 export function renderPlatform(stationCode: string, platform?: number) {
-    if (platform === undefined) return apiConstants.STATION_CODES[stationCode] || stationCode;
+    if (platform === undefined) return apiConstants.LOCATION_ABBREVIATIONS[stationCode] || stationCode;
     return `${
         MONUMENT_STATION_CODES.includes(stationCode)
             ? "Monument"
-            : apiConstants.STATION_CODES[stationCode] || stationCode
+            : apiConstants.LOCATION_ABBREVIATIONS[stationCode] || stationCode
     } Platform ${platform}`;
 }
 

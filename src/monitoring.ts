@@ -11,7 +11,6 @@ import {
     announceUnrecognisedDestinations,
     announceTrainOnWrongDay,
     announceTrainDuringNightHours,
-    TrainEmbedData,
     proxy,
     announceHeartbeatError,
     announceHeartbeatWarnings,
@@ -42,6 +41,7 @@ import {
     secondsSinceMidnight,
     whenIsNextDay
 } from "./timetable";
+import {TrainEmbedData} from "./rendering";
 
 type TrainCheckData<Status = ActiveTrainHistoryStatus> = {
     trn: string;
@@ -486,7 +486,7 @@ async function onNewTrainsHistory(payload: FullNewTrainsHistoryPayload) {
 
 async function _refreshCache() {
     await refreshCache(proxy);
-    for (const stationCode of Object.keys(apiConstants.STATION_CODES)) {
+    for (const stationCode of Object.keys(apiConstants.LOCATION_ABBREVIATIONS)) {
         seenStationCodes.add(stationCode);
         // TODO: Announce unrecognised stations from the times API
     }

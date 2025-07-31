@@ -18,7 +18,6 @@ import dueTimesCommand, {
     autoCompleteOptions as dueTimesAutoComplete,
     button as dueTimesButtons
 } from "./due-times-command";
-import {apiConstants} from "../cache";
 
 export async function registerCommands(client: Client) {
     const TRN_OPTION = {

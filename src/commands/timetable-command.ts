@@ -225,7 +225,7 @@ export async function autoCompleteOptions(focusedOption: AutocompleteFocusedOpti
         options = Object.keys((await getTodaysTimetable()).trains);
     }
     if (focusedOption.name === 'locations' || focusedOption.name === 'destinations') {
-        options = Object.keys(apiConstants.STATION_CODES);
+        options = Object.keys(apiConstants.LOCATION_ABBREVIATIONS);
     }
     if (focusedOption.name === 'types') {
         options = ['1', '2', '3', '4'];

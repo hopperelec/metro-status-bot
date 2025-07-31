@@ -76,19 +76,22 @@ export function parseLocation(location: string) {
     }
 }
 
-export function locationsMatch(location: string, destination: string) {
-    if (location === destination) return true;
-    const parsedLocation = parseLocation(location);
-    const parsedDestination = parseLocation(destination);
-    if (!parsedLocation || !parsedDestination) return false;
+const IGNORE_PLATFORM_STATIONS = ['APT', 'SHL', 'SJM', 'SSS', 'PJC'];
+
+export function locationsMatch(location1: string, location2: string) {
+    if (location1 === location2) return true;
+    const parsedLocation1 = parseLocation(location1);
+    const parsedLocation2 = parseLocation(location2);
+    if (!parsedLocation1 || !parsedLocation2) return false;
     if (
-        parsedLocation.platform !== undefined &&
-        parsedDestination.platform !== undefined &&
-        parsedLocation.platform !== parsedDestination.platform
+        parsedLocation1.platform !== undefined &&
+        parsedLocation2.platform !== undefined &&
+        parsedLocation1.platform !== parsedLocation2.platform &&
+        !IGNORE_PLATFORM_STATIONS.includes(parsedLocation1.station)
     ) return false;
-    if (parsedLocation.station === parsedDestination.station) return true;
-    return MONUMENT_STATION_CODES.includes(parsedLocation.station) &&
-        MONUMENT_STATION_CODES.includes(parsedDestination.station);
+    if (parsedLocation1.station === parsedLocation2.station) return true;
+    return MONUMENT_STATION_CODES.includes(parsedLocation1.station) &&
+        MONUMENT_STATION_CODES.includes(parsedLocation2.station);
 }
 
 export function calculateDifferenceToTimetable(

@@ -314,7 +314,12 @@ async function eitherAPIChecks(
         secondsSinceMidnight(checkData.curr.date)
     );
     if (platformCheck === "sss-p1") {
-        await announceTrainAtSouthShieldsP1(await getFullEmbedData(checkData));
+        // For some reason, any trains at South Shields platform 2 after midnight appear at platform 1 on the API.
+        // This is clearly a bug in the API because trains at platform 2 at midnight will seemingly teleport to platform 1 with the same arrival time.
+        // So don't announce trains at South Shields platform 1 after midnight.
+        if (curr.date.getHours() >= apiConstants.NEW_DAY_HOUR) {
+            await announceTrainAtSouthShieldsP1(await getFullEmbedData(checkData));
+        }
     } else if (platformCheck === "sjm-p2") {
         await announceTrainAtStJamesP2(await getFullEmbedData(checkData));
     } else if (platformCheck === "unrecognised") {

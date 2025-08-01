@@ -1,7 +1,5 @@
 import {MULTIPLE_TRAINS_THRESHOLD} from "./constants";
 import {
-    alertNowActive,
-    alertSubscriptions,
     announceDisappearedTrain,
     announceReappearedTrain,
     announceTrainOnWrongDayDisappeared,
@@ -20,7 +18,7 @@ import {
     announceUnparseableLastEventLocation,
     announceTrainAtStJamesP2,
     announceTrainAtUnrecognisedPlatform,
-    announceTrainAtSouthShieldsP1, AlertSubscription, announceECS
+    announceTrainAtSouthShieldsP1, announceECS
 } from "./bot";
 import {
     apiConstants,
@@ -355,18 +353,6 @@ async function checkActiveTrain(checkData: TrainCheckData) {
             parsedLastSeen,
             timesAPILocation
         );
-    }
-
-    const fulfilledSubscriptions: AlertSubscription[] = [];
-    for (const subscription of alertSubscriptions) {
-        const data = lastHistoryEntries[subscription.trn];
-        if (data) {
-            await alertNowActive(subscription, await getFullEmbedData(checkData));
-            fulfilledSubscriptions.push(subscription);
-        }
-    }
-    for (const subscription of fulfilledSubscriptions) {
-        alertSubscriptions.splice(alertSubscriptions.indexOf(subscription), 1);
     }
 }
 

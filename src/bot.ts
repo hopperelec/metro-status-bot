@@ -43,12 +43,6 @@ client.once(Events.ClientReady, async () => {
 
 client.on(Events.InteractionCreate, handleInteraction);
 
-export type AlertSubscription = {
-    userId: string;
-    trn: string;
-}
-export const alertSubscriptions: AlertSubscription[] = [];
-
 export async function updateActivity(numActive: number) {
     client.user.setActivity(
         `${numActive} trains`,
@@ -218,22 +212,6 @@ export async function announceMultipleReappearedTrains(trns: Set<string>) {
     await mainChannel.send({
         content: `✅ The following ${trns.size} trains have reappeared simultaneously!\n${listTrns(trns)}`,
     });
-}
-
-export async function alertNowActive(subscription: AlertSubscription, train: TrainEmbedData) {
-    const user = await client.users.fetch(subscription.userId);
-    let message: string;
-    if (train.status.timesAPI && train.status.trainStatusesAPI) {
-        message = `🎉 Train T${train.trn} is now active.`;
-    } else if (train.status.timesAPI) {
-        message = `🎭 Train T${train.trn} is now showing as active, but only on the times API and not the train statuses API.`;
-    } else {
-        message = `🎭 Train T${train.trn} is now showing as active, but only on the train statuses API and not the times API.`;
-    }
-    await user.send({
-        content: message,
-        embeds: [trainEmbed(train)]
-    }).catch();
 }
 
 // Train statuses API

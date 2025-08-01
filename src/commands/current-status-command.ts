@@ -1,4 +1,4 @@
-import {ActionRowBuilder, AutocompleteFocusedOption, ButtonBuilder, ButtonStyle, CommandInteraction} from "discord.js";
+import {AutocompleteFocusedOption, CommandInteraction} from "discord.js";
 import {lastHistoryEntries, getTodaysTimetable, setLastHeartbeat} from "../cache";
 import {FullTrainResponse} from "metro-api-client";
 import {proxy} from "../bot";
@@ -71,18 +71,7 @@ export default async function command(interaction: CommandInteraction) {
             embeds: [trainEmbed({ trn, date: train.lastChanged, status: train.status })],
         }).catch(console.error);
     } else {
-        const row = new ActionRowBuilder<ButtonBuilder>()
-            .addComponents(
-                new ButtonBuilder()
-                    .setCustomId(`alert:${trn}`)
-                    .setLabel('Alert me when this train appears')
-                    .setStyle(ButtonStyle.Primary)
-            );
-
-        await interaction.reply({
-            content: lines.join('\n'),
-            components: [row]
-        }).catch(console.error);
+        await interaction.reply(lines.join('\n')).catch(console.error);
     }
 }
 

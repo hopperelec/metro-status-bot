@@ -7,10 +7,6 @@ import statusHistoryCommand, {
     autoCompleteOptions as statusHistoryAutoComplete,
     button as historyButtons
 } from "./status-history-command";
-import alertWhenActiveCommand, {
-    autoCompleteOptions as alertWhenActiveAutoComplete,
-    subscribeTo
-} from "./alert-when-active-command";
 import listActiveCommand from "./list-active-command";
 import timetableCommand, {autoCompleteOptions as timetableAutoComplete} from "./timetable-command";
 import {PROPERTY_CHOICES as HISTORY_PROPERTY_CHOICES} from "./status-history-command";
@@ -68,12 +64,6 @@ export async function registerCommands(client: Client) {
                     type: 3, // string
                 }
             ],
-            contexts: [0, 1, 2]
-        },
-        {
-            name: 'alert-when-train-active',
-            description: 'Get notified via a DM when a train appears',
-            options: [TRN_OPTION],
             contexts: [0, 1, 2]
         },
         {
@@ -173,8 +163,6 @@ export async function handleInteraction(interaction: Interaction) {
             await currentStatusCommand(interaction);
         } else if (interaction.commandName === 'train-status-history') {
             await statusHistoryCommand(interaction);
-        } else if (interaction.commandName === 'alert-when-train-active') {
-            await alertWhenActiveCommand(interaction);
         } else if (interaction.commandName === 'list-active-trains') {
             await listActiveCommand(interaction);
         } else if (interaction.commandName === 'train-timetable') {
@@ -185,9 +173,7 @@ export async function handleInteraction(interaction: Interaction) {
 
     } else if (interaction.isButton()) {
         const [action, ...rest] = interaction.customId.split(':');
-        if (action === 'alert') {
-            await subscribeTo(rest[0], interaction);
-        } else if (action === 'history') {
+        if (action === 'history') {
             await historyButtons(interaction, rest);
         } else if (action === 'due-times') {
             await dueTimesButtons(interaction, rest);
@@ -202,8 +188,6 @@ export async function handleInteraction(interaction: Interaction) {
             options = currentStatusAutoComplete(focusedOption);
         } else if (interaction.commandName === 'train-status-history') {
             options = statusHistoryAutoComplete(focusedOption);
-        } else if (interaction.commandName === 'alert-when-train-active') {
-            options = await alertWhenActiveAutoComplete(focusedOption);
         } else if (interaction.commandName === 'train-timetable') {
             options = await timetableAutoComplete(focusedOption);
         } else if (interaction.commandName === 'due-times') {

@@ -61,7 +61,6 @@ const missingTrains = new Map<string, {
     prevStatus: Omit<ActiveTrainHistoryEntry, "active">;
     whenToAnnounce: Date;
 }>;
-const seenStationCodes = new Set<string>();
 
 let embedDatas: Record<string, TrainEmbedData> = {};
 async function getFullEmbedData({ trn, curr }: TrainCheckData): Promise<TrainEmbedData> {
@@ -480,19 +479,11 @@ async function onNewTrainsHistory(payload: FullNewTrainsHistoryPayload) {
     }
 }
 
-async function _refreshCache() {
-    await refreshCache(proxy);
-    for (const stationCode of Object.keys(apiConstants.LOCATION_ABBREVIATIONS)) {
-        seenStationCodes.add(stationCode);
-        // TODO: Announce unrecognised stations from the times API
-    }
-}
-
 const ongoingErrors = new Set<string>();
 const lastErrors = new Set<string>();
 
 export async function startMonitoring() {
-    await _refreshCache();
+    await refreshCache(proxy);
     console.log("Connecting to stream...");
     let connectedOnce = false;
     let currentlyConnected = false;
@@ -501,7 +492,7 @@ export async function startMonitoring() {
         console.log("Successfully connected to stream!");
         currentlyConnected = true;
         if (connectedOnce) {
-            await _refreshCache();
+            await refreshCache(proxy);
         } else {
             connectedOnce = true;
         }

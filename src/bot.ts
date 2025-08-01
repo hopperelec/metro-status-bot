@@ -110,6 +110,13 @@ export async function announceTrainDuringNightHours(train: TrainEmbedData) {
     });
 }
 
+export async function announceECS(train: TrainEmbedData) {
+    await mainChannel.send({
+        content: `🧐 Train T${train.trn} is showing on the Pop app. While this TRN is timetabled for today, it is not meant to be in service, so the Pop app doesn't usually show it.`,
+        embeds: [trainEmbed(train)]
+    });
+}
+
 export async function announceUnrecognisedDestinations(
     currStatus: TrainEmbedData,
     prevStatus: TrainEmbedData,

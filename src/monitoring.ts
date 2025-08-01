@@ -20,7 +20,7 @@ import {
     announceUnparseableLastEventLocation,
     announceTrainAtStJamesP2,
     announceTrainAtUnrecognisedPlatform,
-    announceTrainAtSouthShieldsP1, AlertSubscription
+    announceTrainAtSouthShieldsP1, AlertSubscription, announceECS
 } from "./bot";
 import {
     apiConstants,
@@ -200,6 +200,8 @@ async function shouldAnnounceUntimetabledActivity(
         const timeInStatuses = secondsSinceMidnight(dateInStatuses);
         if (isNightHours(trainTimetable, timeInStatuses)) return "night-hours";
     }
+
+    if (trainTimetable.every(entry => !entry.inService)) return "ecs";
 }
 
 function shouldAnnounceUnrecognisedStation(
@@ -269,6 +271,8 @@ async function eitherAPIChecks(
         await announceTrainOnWrongDay(await getFullEmbedData(checkData));
     } else if (shouldBeActive === "night-hours") {
         await announceTrainDuringNightHours(await getFullEmbedData(checkData));
+    } else if (shouldBeActive === "ecs") {
+        await announceECS(await getFullEmbedData(checkData));
     }
 
     const newUnrecognisedDestinations = getNewUnrecognisedDestinations(checkData);

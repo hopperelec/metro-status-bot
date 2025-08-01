@@ -66,14 +66,17 @@ export function getAPIName(code: string) {
 
 export async function announceHeartbeatError(payload: HeartbeatErrorPayload) {
     await mainChannel.send({
-        content: `⚠️ An error occurred while fetching or parsing data from ${getAPIName(payload.api)}: ${payload.message}`,
+        content: `⚠️ An error occurred while fetching or parsing data from ${getAPIName(payload.api)}:\n` +
+            `> ${payload.message}\n` +
+            "-# This usually indicates a problem with or downtime of Nexus' APIs; the bot and proxy are still working fine.",
     });
 }
 
 export async function announceHeartbeatWarnings(payload: HeartbeatWarningsPayload) {
     const apiName = getAPIName(payload.api);
     await mainChannel.send({
-        content: `⚠️ One or more warnings were produced while parsing data from ${apiName}.`,
+        content: `⚠️ One or more warnings were produced while parsing data from ${apiName}.\n` +
+            "-# This usually indicates strange or unexpected behaviour from Nexus' APIs; the bot and proxy are still working fine.",
         files: [
             {
                 name: "warnings.txt",

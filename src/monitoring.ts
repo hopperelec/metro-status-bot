@@ -1,4 +1,4 @@
-import {MULTIPLE_TRAINS_THRESHOLD} from "./constants";
+import {DEPARTED_FGT_TO_SHARED_DELAY, MULTIPLE_TRAINS_THRESHOLD} from "./constants";
 import {
     announceDisappearedTrain,
     announceReappearedTrain,
@@ -398,6 +398,28 @@ async function handleMultipleReappearedTrains(trns: Set<string>) {
     await announceMultipleReappearedTrains(trns);
 }
 
+function isDepartedFGTtoShared(status: ActiveTrainHistoryStatus) {
+    if (
+        status.timesAPI?.lastEvent.location.startsWith("Fellgate Platform ") &&
+        status.timesAPI?.lastEvent.type === "DEPARTED"
+    ) {
+        const destinationCode = getStationCode(status.timesAPI?.plannedDestinations[0].name);
+        if (
+            destinationCode &&
+            apiConstants.LINES.yellow.includes(destinationCode) &&
+            apiConstants.LINES.green.includes(destinationCode)
+        ) return true;
+    }
+    if (!status.trainStatusesAPI) return false;
+    const destinationCode = getStationCode(status.trainStatusesAPI.destination);
+    if (!destinationCode) return false;
+    const parsedLastSeen = parseLastSeen(status.trainStatusesAPI.lastSeen);
+    return parsedLastSeen?.station === "FGT" &&
+        parsedLastSeen.state === "Departed" &&
+        apiConstants.LINES.yellow.includes(destinationCode) &&
+        apiConstants.LINES.green.includes(destinationCode);
+}
+
 async function onNewTrainsHistory(payload: FullNewTrainsHistoryPayload) {
     setLastHeartbeat(payload.date);
     if (Object.keys(payload.trains).length === 0) return;
@@ -458,6 +480,15 @@ async function onNewTrainsHistory(payload: FullNewTrainsHistoryPayload) {
                 }) as { extract: [ActiveTrainHistoryEntry] };
                 const { active, ...rest } = response.extract[0];
                 prev = rest;
+            }
+            if (isDepartedFGTtoShared(prev.status)) {
+                // See comment on `DEPARTED_FGT_TO_SHARED_DELAY` for explanation
+                missingTrains.set(trn, {
+                    announced: false,
+                    prevStatus: prev,
+                    whenToAnnounce: new Date(prev.date.getTime() + 1000 * 60 * DEPARTED_FGT_TO_SHARED_DELAY)
+                });
+                continue;
             }
             await handleDisappearedTrain(trn, prev);
         }

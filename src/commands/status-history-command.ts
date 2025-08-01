@@ -5,7 +5,7 @@ import {
     ButtonBuilder, ButtonInteraction, ButtonStyle,
     CommandInteraction
 } from "discord.js";
-import {apiConstants, getTodaysTimetable, lastHeartbeat, trainsWithHistory} from "../cache";
+import {apiConstants, getTodaysTimetable, trainsWithHistory} from "../cache";
 import {HISTORY_PAGE_ROWS} from "../constants";
 import {proxy} from "../bot";
 import {
@@ -18,6 +18,7 @@ import {
 } from "metro-api-client";
 import {renderPlatform, renderTimesAPILastEvent, renderTrainStatusesAPILastSeen} from "../rendering";
 import {normalizeTRN} from "./index";
+import {isToday} from "../utils";
 
 interface RenderedEntry {
     date: Date;
@@ -158,14 +159,6 @@ function compareData(
         return historyProperty.equals(a, b);
     }
     return a === b;
-}
-
-function getShiftedDayKey(date: Date) {
-    const shifted = new Date(date.getTime() - apiConstants.NEW_DAY_HOUR * 60 * 60 * 1000);
-    return `${shifted.getFullYear()}-${shifted.getMonth() + 1}-${shifted.getDate()}`;
-}
-function isToday(date: Date): boolean {
-    return getShiftedDayKey(lastHeartbeat) === getShiftedDayKey(date);
 }
 
 async function filterAndRenderEntries(

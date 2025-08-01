@@ -14,6 +14,7 @@ import dueTimesCommand, {
     autoCompleteOptions as dueTimesAutoComplete,
     button as dueTimesButtons
 } from "./due-times-command";
+import trainStatusAtTimeCommand from "./train-status-at-time-command";
 
 export async function registerCommands(client: Client) {
     const TRN_OPTION = {
@@ -62,6 +63,31 @@ export async function registerCommands(client: Client) {
                     name: 'end-time',
                     description: 'End time to show history up to, in HH:MM[:SS] format',
                     type: 3, // string
+                }
+            ],
+            contexts: [0, 1, 2]
+        },
+        {
+            name: 'train-status-at-time',
+            description: 'Get the full status of a train at a specific time',
+            options: [
+                TRN_OPTION,
+                {
+                    name: 'time',
+                    description: 'Time to get the status for, in HH:MM[:SS] format. Defaults to now.',
+                    type: 3, // string
+                },
+                {
+                    name: 'date',
+                    description: 'Date to get the status for, in YYYY-MM-DD format. Defaults to today.',
+                    type: 3, // string
+                    required: false,
+                },
+                {
+                    name: 'after',
+                    description: 'Show status at or just after the specified time (as opposed to default of at or just before).',
+                    type: 5, // boolean
+                    required: false,
                 }
             ],
             contexts: [0, 1, 2]
@@ -169,6 +195,8 @@ export async function handleInteraction(interaction: Interaction) {
             await timetableCommand(interaction);
         } else if (interaction.commandName === 'due-times') {
             await dueTimesCommand(interaction);
+        } else if (interaction.commandName === 'train-status-at-time') {
+            await trainStatusAtTimeCommand(interaction);
         }
 
     } else if (interaction.isButton()) {
@@ -184,14 +212,20 @@ export async function handleInteraction(interaction: Interaction) {
     } else if (interaction.isAutocomplete()) {
         const focusedOption = interaction.options.getFocused(true);
         let options: string[];
-        if (interaction.commandName === 'current-train-status') {
-            options = currentStatusAutoComplete(focusedOption);
-        } else if (interaction.commandName === 'train-status-history') {
-            options = statusHistoryAutoComplete(focusedOption);
-        } else if (interaction.commandName === 'train-timetable') {
-            options = await timetableAutoComplete(focusedOption);
-        } else if (interaction.commandName === 'due-times') {
-            options = await dueTimesAutoComplete(focusedOption);
+        switch (interaction.commandName) {
+            case 'current-train-status':
+                options = currentStatusAutoComplete(focusedOption);
+                break;
+            case 'train-status-at-time':
+            case 'train-status-history':
+                options = statusHistoryAutoComplete(focusedOption);
+                break;
+            case 'train-timetable':
+                options = await timetableAutoComplete(focusedOption);
+                break;
+            case 'due-times':
+                options = await dueTimesAutoComplete(focusedOption);
+                break;
         }
         const prompt = focusedOption.value.toLowerCase();
         await interaction.respond(

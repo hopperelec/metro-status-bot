@@ -149,18 +149,21 @@ export function renderLocation(location: string) {
     return parsedLocation ? renderPlatform(parsedLocation.station, parsedLocation.platform) : location;
 }
 
-export function renderExpectedTrainState(state: ExpectedTrainState) {
+export function renderExpectedTrainState(state: ExpectedTrainState, past: boolean = false) {
     const location = renderLocation(state.location);
     const destination = renderLocation(state.destination);
-    const STATE_PREFIX_MAP = {
+    const prefix = {
         APPROACHING: locationsMatch(location, destination)
-            ? `be terminating at ${location}`
-            : `be approaching ${location} heading`,
-        ARRIVED: `be at ${location} heading`,
+            ? past ? `have been terminating at ${location}` : `be terminating at ${location}`
+            : past ? `have been approaching ${location}` : `be approaching ${location}`,
+        ARRIVED: past
+            ? `have been at ${location} heading`
+            : `be at ${location} heading`,
         DEPARTED: `have departed from ${location} heading`,
-        TERMINATED: `be terminated at ${location}, about to head`,
-    };
-    const prefix = STATE_PREFIX_MAP[state.event];
+        TERMINATED: past
+            ? `have been terminated at ${location}, about to head`
+            : `be terminated at ${location}, about to head`,
+    }[state.event];
     return state.inService
         ? `${prefix} towards ${destination}`
         : `${prefix} empty towards ${destination}`;

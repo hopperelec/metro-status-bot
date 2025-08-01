@@ -152,19 +152,36 @@ export function renderLocation(location: string) {
 export function renderExpectedTrainState(state: ExpectedTrainState, past: boolean = false) {
     const location = renderLocation(state.location);
     const destination = renderLocation(state.destination);
-    const prefix = {
-        APPROACHING: locationsMatch(location, destination)
-            ? past ? `have been terminating at ${location}` : `be terminating at ${location}`
-            : past ? `have been approaching ${location}` : `be approaching ${location}`,
-        ARRIVED: past
-            ? `have been at ${location} heading`
-            : `be at ${location} heading`,
-        DEPARTED: `have departed from ${location} heading`,
-        TERMINATED: past
-            ? `have been terminated at ${location}, about to head`
-            : `be terminated at ${location}, about to head`,
-    }[state.event];
-    return state.inService
-        ? `${prefix} towards ${destination}`
-        : `${prefix} empty towards ${destination}`;
+    let formatKey: string = state.event;
+    if (formatKey === "APPROACHING" && location === destination) formatKey = "TERMINATING";
+    if (!state.inService) formatKey += "_NIS";
+    if (past) formatKey += "_PAST";
+    switch (formatKey) {
+        case "ARRIVED": return `be at ${location} heading towards ${destination}`;
+        case "ARRIVED_PAST": return `have been at ${location} heading towards ${destination}`;
+        case "ARRIVED_NIS": return `be at ${location} heading empty towards ${destination}`;
+        case "ARRIVED_NIS_PAST": return `have been at ${location} heading empty towards ${destination}`;
+
+        case "APPROACHING": return `be approaching ${location} towards ${destination}`;
+        case "APPROACHING_PAST": return `have been approaching ${location} towards ${destination}`;
+        case "APPROACHING_NIS": return `be approaching ${location} empty towards ${destination}`;
+        case "APPROACHING_NIS_PAST": return `have been approaching ${location} empty towards ${destination}`;
+
+        case "TERMINATING": return `be terminating at ${location}`;
+        case "TERMINATING_PAST": return `have been terminating at ${location}`;
+        case "TERMINATING_NIS": return `be terminating empty at ${location}`;
+        case "TERMINATING_NIS_PAST": return `have been terminating empty at ${location}`;
+
+        case "TERMINATED": return `be terminated at ${location}, about to head to ${destination}`;
+        case "TERMINATED_PAST": return `have been terminated at ${location}, about to head to ${destination}`;
+        case "TERMINATED_NIS": return `be terminated at ${location}, about to head empty to ${destination}`;
+        case "TERMINATED_NIS_PAST": return `have been terminated at ${location}, about to head empty to ${destination}`;
+
+        case "DEPARTED":
+        case "DEPARTED_PAST":
+            return `have departed from ${location} towards ${destination}`;
+        case "DEPARTED_NIS":
+        case "DEPARTED_NIS_PAST":
+            return `have departed empty from ${location} towards ${destination}`;
+    }
 }

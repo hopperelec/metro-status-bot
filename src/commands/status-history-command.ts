@@ -5,11 +5,18 @@ import {
     ButtonBuilder, ButtonInteraction, ButtonStyle,
     CommandInteraction
 } from "discord.js";
-import {apiConstants, trainsWithHistory} from "../cache";
+import {apiConstants, getTodaysTimetable, lastHeartbeat, trainsWithHistory} from "../cache";
 import {HISTORY_PAGE_ROWS} from "../constants";
 import {proxy} from "../bot";
-import {parseLastSeen, PropsFilter, TimeFilter, TimesApiData, TrainHistoryOptions} from "metro-api-client";
-import {renderPlatform, renderTimesAPILastSeen} from "../rendering";
+import {
+    parseLastSeen,
+    PropsFilter,
+    TimeFilter,
+    TimesApiData,
+    TrainHistoryOptions,
+    TrainTimetable
+} from "metro-api-client";
+import {renderPlatform, renderTimesAPILastEvent, renderTrainStatusesAPILastSeen} from "../rendering";
 import {normalizeTRN} from "./index";
 
 interface RenderedEntry {
@@ -33,7 +40,7 @@ interface IterativePropertyChoice<OutputData> extends PropertyChoice {
     limit?: number;
     get?: (data: any) => OutputData;
     equals?: (a: OutputData, b: OutputData) => boolean;
-    render?: (data: OutputData) => string;
+    render?: (data: OutputData, trainTimetable: TrainTimetable) => string;
 }
 
 function createPropertyChoice<OutputData>(choice: IterativePropertyChoice<OutputData>) {
@@ -96,9 +103,8 @@ export const PROPERTY_CHOICES: Record<string, FetchPropertyChoice | IterativePro
         equals(a, b) {
             return a?.type === b?.type && a?.location === b?.location && a?.time.getTime() === b?.time.getTime()
         },
-        render(data) {
-            if (data) return renderTimesAPILastSeen(data);
-            return "*Not showing in the times API*";
+        render(data, trainTimetable) {
+            return data ? renderTimesAPILastEvent(data, trainTimetable) : "*Not showing in the times API*";
         }
     }),
     "platform.timesAPI": createPropertyChoice({
@@ -108,8 +114,7 @@ export const PROPERTY_CHOICES: Record<string, FetchPropertyChoice | IterativePro
             return data.timesAPI?.lastEvent.location
         },
         render(data) {
-            if (data) return data;
-            return "*Not showing in the times API*";
+            return data ?? "*Not showing in the times API*";
         }
     }),
     "lastSeen.trainStatusesAPI": createPropertyChoice({
@@ -118,8 +123,8 @@ export const PROPERTY_CHOICES: Record<string, FetchPropertyChoice | IterativePro
         get(data: { trainStatusesAPI?: { lastSeen: string } }) {
             return data.trainStatusesAPI?.lastSeen;
         },
-        render(data) {
-            return data ?? "*Not showing in the train statuses API*";
+        render(data, trainTimetable) {
+            return data ? renderTrainStatusesAPILastSeen(data, trainTimetable) : "*Not showing in the train statuses API*";
         }
     }),
     "platform.trainStatusesAPI": createPropertyChoice({
@@ -155,7 +160,16 @@ function compareData(
     return a === b;
 }
 
-function filterEntries(
+function getShiftedDayKey(date: Date) {
+    const shifted = new Date(date.getTime() - apiConstants.NEW_DAY_HOUR * 60 * 60 * 1000);
+    return `${shifted.getFullYear()}-${shifted.getMonth() + 1}-${shifted.getDate()}`;
+}
+function isToday(date: Date): boolean {
+    return getShiftedDayKey(lastHeartbeat) === getShiftedDayKey(date);
+}
+
+async function filterAndRenderEntries(
+    trn: string,
     historyProperty: IterativePropertyChoice<unknown>,
     extract: { date: Date; status: any }[],
     isVeryFirstEntry: boolean = true,
@@ -186,7 +200,10 @@ function filterEntries(
             } else if (compareData(historyProperty, prevData, currData)) {
                 continue;
             }
-            rendered = historyProperty.render ? historyProperty.render(currData) : `${currData}`;
+            rendered = historyProperty.render ? historyProperty.render(
+                currData,
+                isToday(entry.date) ? (await getTodaysTimetable()).trains[trn] : undefined
+            ) : `${currData}`;
             prevData = currData;
         }
         entries.push({
@@ -228,7 +245,7 @@ async function defaultFetch(
     if (!firstHistory.extract.length) return;
 
     let extract = firstHistory.extract;
-    let prevResult = filterEntries(historyProperty, extract);
+    let prevResult = await filterAndRenderEntries(trn, historyProperty, extract);
     let entries = prevResult.entries;
     while (true) {
         if (entries.length >= HISTORY_PAGE_ROWS) break;
@@ -244,7 +261,7 @@ async function defaultFetch(
         };
         extract = nextHistory.extract;
         if (!extract.length) break; // This could happen if old entries were purged
-        const currResult = filterEntries(historyProperty, extract, false, isTo ? undefined : prevResult.lastData);
+        const currResult = await filterAndRenderEntries(trn, historyProperty, extract, false, isTo ? undefined : prevResult.lastData);
         if (isTo) {
             if (compareData(historyProperty, currResult.lastData, prevResult.firstData)) {
                 entries.shift();

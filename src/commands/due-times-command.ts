@@ -7,13 +7,13 @@ import {
 } from "discord.js";
 import {
     DueTime,
-    PlatformNumber, TimesApiData
+    PlatformNumber, TimesApiData, TrainTimetable
 } from "metro-api-client";
 import {proxy} from "../bot";
 import {parseStationOption} from "./index";
-import {apiConstants} from "../cache";
+import {apiConstants, getTodaysTimetable} from "../cache";
 import {DUE_TIMES_PAGE_ROWS, MONUMENT_STATION_CODES} from "../constants";
-import {renderPlatform, renderTimesAPILastSeen} from "../rendering";
+import {renderPlatform, renderTimesAPILastEvent, renderTrainStatusesAPILastSeen} from "../rendering";
 
 const PROPS = [
     "lastChecked",
@@ -54,7 +54,7 @@ function dueInToString(dueIn: number): string {
     }
 }
 
-function summarizeTrain(time: DueTime, train: BaseFilteredDueTime['status']) {
+function summarizeTrain(time: DueTime, train: BaseFilteredDueTime['status'], trainTimetable: TrainTimetable) {
     const lines = [`**Predicted time:** ${time.actualPredictedTime.toLocaleTimeString('en-GB')}`];
     if (time.actualScheduledTime) {
         lines[0] += ` - **Scheduled time:** ${time.actualScheduledTime.toLocaleTimeString('en-GB')}`;
@@ -66,9 +66,9 @@ function summarizeTrain(time: DueTime, train: BaseFilteredDueTime['status']) {
     }
     lines.push(destination);
 
-    lines.push(`**⌛ Last seen:** ${renderTimesAPILastSeen(train.timesAPI.lastEvent)}`);
+    lines.push(`**⌛ Last seen:** ${renderTimesAPILastEvent(train.timesAPI.lastEvent, trainTimetable)}`);
     if (train.trainStatusesAPI) {
-        lines.push(`**📍 Last seen:** ${train.trainStatusesAPI.lastSeen}`);
+        lines.push(`**📍 Last seen:** ${renderTrainStatusesAPILastSeen(train.trainStatusesAPI.lastSeen, trainTimetable)}`);
     }
 
     return lines.join('\n');
@@ -107,11 +107,11 @@ async function getStationPage(
     stationCode: string, page = "first"
 ) {
     const embedBuilder = new EmbedBuilder();
-    let dueTimes: BaseFilteredDueTime[];
+    let dueTimes: (BaseFilteredDueTime & { platform: number })[];
     try {
         const response = await proxy.getStationDueTimes(
             stationCode,
-            { props: PROPS }
+            { props: [...PROPS, "dueTimes.platform"] }
         ) as {
             lastChecked: Date,
             dueTimes: typeof dueTimes
@@ -130,11 +130,12 @@ async function getStationPage(
     if (dueTimes.length === 0) {
         embedBuilder.setDescription("*No trains due at this station.*");
     } else {
+        const todaysTimetable = await getTodaysTimetable();
         embedBuilder.addFields(
-            dueTimes.slice((pageNum - 1) * DUE_TIMES_PAGE_ROWS, pageNum * DUE_TIMES_PAGE_ROWS).map((train) => {
-                const lines = summarizeTrain(train.time, train.status);
+            dueTimes.slice((pageNum - 1) * DUE_TIMES_PAGE_ROWS, pageNum * DUE_TIMES_PAGE_ROWS).map(dueTime => {
+                const lines = summarizeTrain(dueTime.time, dueTime.status, todaysTimetable.trains[dueTime.trn]);
                 return {
-                    name: `**T${train.trn} - ${dueInToString(train.time.dueIn)}**`,
+                    name: `**P${dueTime.platform} - T${dueTime.trn} - ${dueInToString(dueTime.time.dueIn)}**`,
                     value: lines
                 }
             })
@@ -157,7 +158,7 @@ async function getPlatformPage(
         }
         const response = await proxy.getPlatformDueTimes(
             `${stationCode};${platform}`,
-            { props: [...PROPS, "dueTimes.platform"] }
+            { props: PROPS }
         ) as {
             lastChecked: Date,
             dueTimes: typeof dueTimes
@@ -176,9 +177,10 @@ async function getPlatformPage(
     if (dueTimes.length === 0) {
         embedBuilder.setDescription("*No trains due at this platform.*");
     } else {
+        const todaysTimetable = await getTodaysTimetable();
         embedBuilder.addFields(
             dueTimes.slice((pageNum - 1) * DUE_TIMES_PAGE_ROWS, pageNum * DUE_TIMES_PAGE_ROWS).map((train) => {
-                const lines = summarizeTrain(train.time, train.status);
+                const lines = summarizeTrain(train.time, train.status, todaysTimetable.trains[train.trn]);
                 return {
                     name: `**T${train.trn} - ${dueInToString(train.time.dueIn)}**`,
                     value: lines

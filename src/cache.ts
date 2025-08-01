@@ -15,13 +15,12 @@ let whenToRefreshTimetable: Date
 let todaysTimetable: DayTimetable;
 
 async function refreshTodaysTimetable() {
-    const date = new Date();
-    whenToRefreshTimetable = whenIsNextDay(date);
-    todaysTimetable = await proxy.getTimetable({ date });
+    whenToRefreshTimetable = whenIsNextDay(lastHeartbeat);
+    todaysTimetable = await proxy.getTimetable({ date: lastHeartbeat });
 }
 
 export async function getTodaysTimetable() {
-    if (whenToRefreshTimetable < new Date()) {
+    if (whenToRefreshTimetable < lastHeartbeat) {
         await refreshTodaysTimetable();
     }
     return todaysTimetable;
@@ -35,8 +34,6 @@ export async function refreshCache(proxy: MetroApiClient) {
     console.log("Refreshing cache...");
     apiConstants = await proxy.getConstants();
 
-    await refreshTodaysTimetable();
-
     const trainsResponse = await proxy.getTrains() as FullTrainsResponse;
     lastHistoryEntries = Object.fromEntries(
         Object.entries(trainsResponse.trains).map(([trn, train]) => {
@@ -48,6 +45,8 @@ export async function refreshCache(proxy: MetroApiClient) {
         })
     )
     lastHeartbeat = trainsResponse.lastChecked;
+
+    await refreshTodaysTimetable();
 
     const historySummary = await proxy.getHistorySummary();
     trainsWithHistory = new Set(Object.keys(historySummary.trains));

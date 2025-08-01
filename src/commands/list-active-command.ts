@@ -2,8 +2,8 @@ import {CommandInteraction, EmbedBuilder} from "discord.js";
 import {proxy} from "../bot";
 import {FullTrainsResponse} from "metro-api-client";
 import {
-    calculateDifferenceToTimetableFromTimesAPI,
-    calculateDifferenceToTimetableFromTrainStatusesAPI,
+    calculateDelayFromTimesAPI,
+    calculateDelayFromTrainStatusesAPI,
     getTimetabledTrains,
     secondsSinceMidnight
 } from "../timetable";
@@ -41,10 +41,10 @@ export default async function command(interaction: CommandInteraction) {
         const trainTimetable = todaysTimetable.trains[trn];
         const secsOffTimetable: number[] = [];
         if (data.status.timesAPI) {
-            secsOffTimetable.push(calculateDifferenceToTimetableFromTimesAPI(trainTimetable, data.status.timesAPI));
+            secsOffTimetable.push(calculateDelayFromTimesAPI(trainTimetable, data.status.timesAPI.lastEvent));
         }
         if (data.status.trainStatusesAPI) {
-            secsOffTimetable.push(calculateDifferenceToTimetableFromTrainStatusesAPI(trainTimetable, data.status.trainStatusesAPI));
+            secsOffTimetable.push(calculateDelayFromTrainStatusesAPI(trainTimetable, data.status.trainStatusesAPI.lastSeen));
         }
         const minsOffTimetable = [...new Set(
             secsOffTimetable

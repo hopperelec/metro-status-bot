@@ -3,12 +3,10 @@ import {lastHistoryEntries, getTodaysTimetable, setLastHeartbeat} from "../cache
 import {FullTrainResponse} from "metro-api-client";
 import {proxy} from "../bot";
 import {
-    calculateDifferenceToTimetableFromTimesAPI,
-    calculateDifferenceToTimetableFromTrainStatusesAPI,
     getExpectedTrainState,
     secondsSinceMidnight,
 } from "../timetable";
-import {renderDifferenceToTimetable, renderExpectedTrainState, trainEmbed} from "../rendering";
+import {renderExpectedTrainState, trainEmbed} from "../rendering";
 import {normalizeTRN} from "./index";
 
 export default async function command(interaction: CommandInteraction) {
@@ -43,32 +41,9 @@ export default async function command(interaction: CommandInteraction) {
     }
 
     if (train.status) {
-        if (trainTimetable) {
-            let differenceAccordingToTimes: number;
-            if (train.status.timesAPI) {
-                differenceAccordingToTimes = calculateDifferenceToTimetableFromTimesAPI(trainTimetable, train.status.timesAPI);
-            }
-            let differenceAccordingToStatuses: number;
-            if (train.status.trainStatusesAPI) {
-                differenceAccordingToStatuses = calculateDifferenceToTimetableFromTrainStatusesAPI(trainTimetable, train.status.trainStatusesAPI);
-            }
-            if (
-                !(Number.isFinite(differenceAccordingToTimes) || Number.isFinite(differenceAccordingToStatuses)) ||
-                Math.abs(differenceAccordingToTimes - differenceAccordingToStatuses) < 60
-            ) {
-                lines.push(`This train is ${renderDifferenceToTimetable(differenceAccordingToTimes)}`);
-            } else {
-                if (differenceAccordingToTimes !== undefined) {
-                    lines.push(`According to the times API, this train is ${renderDifferenceToTimetable(differenceAccordingToTimes)}`);
-                }
-                if (differenceAccordingToStatuses !== undefined) {
-                    lines.push(`According to the statuses API, this train is ${renderDifferenceToTimetable(differenceAccordingToStatuses)}`);
-                }
-            }
-        }
         await interaction.reply({
             content: lines.join('\n'),
-            embeds: [trainEmbed({ trn, date: train.lastChanged, status: train.status })],
+            embeds: [trainEmbed({ trn, date: train.lastChanged, status: train.status, timetable: trainTimetable })],
         }).catch(console.error);
     } else {
         await interaction.reply(lines.join('\n')).catch(console.error);

@@ -3,7 +3,7 @@ import {
     DayTimetable,
     ExpectedTrainState,
     parseLastSeen, parseTimesAPILocation,
-    TimesApiData, TrainStatusesApiData,
+    TimesApiData,
     TrainTimetable,
 } from "metro-api-client";
 import {MONUMENT_STATION_CODES} from "./constants";
@@ -94,12 +94,13 @@ export function locationsMatch(location1: string, location2: string) {
         MONUMENT_STATION_CODES.includes(parsedLocation2.station);
 }
 
-export function calculateDifferenceToTimetable(
+export function calculateDelay(
     trainTimetable: TrainTimetable,
     time: number,
     location: string,
     departed: boolean
 ) {
+    if (!trainTimetable) return Infinity;
     let smallestTimeDifference = Infinity;
     for (const entry of trainTimetable) {
         if (!locationsMatch(entry.location, location)) continue;
@@ -113,27 +114,27 @@ export function calculateDifferenceToTimetable(
     return smallestTimeDifference;
 }
 
-export function calculateDifferenceToTimetableFromTimesAPI(
+export function calculateDelayFromTimesAPI(
     trainTimetable: TrainTimetable,
-    apiData: TimesApiData,
+    lastEvent: TimesApiData['lastEvent'],
 ) {
-    const parsedLocation = parseTimesAPILocation(apiData.lastEvent.location);
-    if (parsedLocation) return calculateDifferenceToTimetable(
+    const parsedLocation = parseTimesAPILocation(lastEvent.location);
+    if (parsedLocation) return calculateDelay(
         trainTimetable,
-        secondsSinceMidnight(apiData.lastEvent.time),
+        secondsSinceMidnight(lastEvent.time),
         `${getStationCode(parsedLocation.station)}_${parsedLocation.platform}`,
         ["DEPARTED", "READY_TO_START", "READY_TO_DEPART"].includes(
-            apiData.lastEvent.type.toUpperCase().replace(' ', '_')
+            lastEvent.type.toUpperCase().replace(' ', '_')
         )
     );
 }
 
-export function calculateDifferenceToTimetableFromTrainStatusesAPI(
+export function calculateDelayFromTrainStatusesAPI(
     trainTimetable: TrainTimetable,
-    apiData: TrainStatusesApiData
+    lastSeen: string,
 ) {
-    const parsedLastSeen = parseLastSeen(apiData.lastSeen);
-    if (parsedLastSeen) return calculateDifferenceToTimetable(
+    const parsedLastSeen = parseLastSeen(lastSeen);
+    if (parsedLastSeen) return calculateDelay(
         trainTimetable,
         parsedLastSeen.hours * 3600 + parsedLastSeen.minutes * 60,
         `${getStationCode(parsedLastSeen.station)}_${parsedLastSeen.platform}`,

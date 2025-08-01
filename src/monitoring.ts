@@ -96,6 +96,7 @@ async function getFullEmbedData({ trn, curr }: TrainCheckData): Promise<TrainEmb
         trn,
         date: curr.date,
         status: fullStatus,
+        timetable: (await getTodaysTimetable()).trains[trn],
     }
     embedDatas[trn] = embedData
     return embedData;

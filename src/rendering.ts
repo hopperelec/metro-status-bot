@@ -4,18 +4,42 @@ import {EmbedBuilder} from "discord.js";
 import {
     ActiveTrainHistoryStatus,
     CollatedTrain, ExpectedTrainState,
-    TimesApiData
+    TimesApiData, TrainTimetable
 } from "metro-api-client";
-import {locationsMatch, parseLocation} from "./timetable";
+import {
+    calculateDelayFromTimesAPI,
+    calculateDelayFromTrainStatusesAPI,
+    locationsMatch,
+    parseLocation
+} from "./timetable";
 
 export type TrainEmbedData = {
     trn: string;
     status: CollatedTrain | ActiveTrainHistoryStatus;
     date: Date;
+    timetable?: TrainTimetable;
 }
 
-export function renderTimesAPILastSeen(data: TimesApiData["lastEvent"]) {
-    return `${data.type.replaceAll("_", " ")} ${data.location} at ${data.time.toLocaleTimeString('en-GB')}`;
+function renderSignedNumber(value: number) {
+    return `${value >= 0 ? '+' : ''}${value}`;
+}
+
+export function renderDelay(delay: number) {
+    if (delay === Infinity) return "untimetabled";
+    if (Math.abs(delay) <= 60) return "on time";
+    if (Math.abs(delay) < 120) return `${renderSignedNumber(delay)}s`;
+    return `${renderSignedNumber(Math.round(delay / 60))}m`;
+}
+
+export function renderTimesAPILastEvent(lastEvent: TimesApiData["lastEvent"], trainTimetable?: TrainTimetable) {
+    const start = `${lastEvent.type.replaceAll("_", " ")} ${lastEvent.location} at ${lastEvent.time.toLocaleTimeString('en-GB')}`;
+    return trainTimetable ? `${start} (${renderDelay(calculateDelayFromTimesAPI(trainTimetable, lastEvent))})` : start;
+}
+
+export function renderTrainStatusesAPILastSeen(lastSeen: string, trainTimetable?: TrainTimetable) {
+    return trainTimetable
+        ? `${lastSeen} (${renderDelay(calculateDelayFromTrainStatusesAPI(trainTimetable, lastSeen))})`
+        : lastSeen;
 }
 
 export function trainEmbed(train: TrainEmbedData) {
@@ -51,7 +75,7 @@ export function trainEmbed(train: TrainEmbedData) {
         embed.addFields(
             {
                 name: "⌛ Last seen",
-                value: renderTimesAPILastSeen(data.lastEvent)
+                value: renderTimesAPILastEvent(data.lastEvent, train.timetable)
             },
             {
                 name: "⌛ Planned destinations",
@@ -86,7 +110,7 @@ export function trainEmbed(train: TrainEmbedData) {
             },
             {
                 name: "📍 Last seen",
-                value: data.lastSeen
+                value: renderTrainStatusesAPILastSeen(data.lastSeen, train.timetable)
             }
         )
     }
@@ -140,13 +164,4 @@ export function renderExpectedTrainState(state: ExpectedTrainState) {
     return state.inService
         ? `${prefix} towards ${destination}`
         : `${prefix} empty towards ${destination}`;
-}
-
-export function renderDifferenceToTimetable(difference: number) {
-    if (difference === Infinity) return "not running to timetable."
-    if (Math.abs(difference) <= 60) return "on time.";
-    if (difference > 120) return `running ${Math.round(difference/60)} minutes late.`;
-    if (difference > 0) return `running ${difference} seconds late.`;
-    if (difference < -120) return `${Math.round(-difference/60)} minutes early.`;
-    return `${-difference} seconds early.`;
 }

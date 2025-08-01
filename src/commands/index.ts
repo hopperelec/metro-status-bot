@@ -224,3 +224,10 @@ export function parseStationOption(station: string) {
     const match = station.match(STATION_REGEX);
     return match?.[1];
 }
+
+const T1xx_REGEX = new RegExp(/^T1\d\d$/i);
+export function normalizeTRN(trn: string) {
+    trn = trn.trim();
+    // Remove the leading 'T' if included
+    return T1xx_REGEX.test(trn) ? trn.slice(1) : trn;
+}

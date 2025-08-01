@@ -4,9 +4,10 @@ import {getTodaysTimetable, lastHeartbeat, lastHistoryEntries} from "../cache";
 import {getTimetabledTrains, secondsSinceMidnight} from "../timetable";
 import {CollatedTrain} from "metro-api-client";
 import {trainEmbed} from "../rendering";
+import {normalizeTRN} from "./index";
 
 export default async function command(interaction: CommandInteraction) {
-    const trn = interaction.options.get('trn').value as string;
+    const trn = normalizeTRN(interaction.options.get('trn').value as string);
     const train = await proxy.getTrain(trn, { props: ["status", "lastChanged"] }) as {
         lastChanged: Date
         status?: CollatedTrain

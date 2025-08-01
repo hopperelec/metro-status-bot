@@ -9,9 +9,10 @@ import {
     secondsSinceMidnight,
 } from "../timetable";
 import {renderDifferenceToTimetable, renderExpectedTrainState, trainEmbed} from "../rendering";
+import {normalizeTRN} from "./index";
 
 export default async function command(interaction: CommandInteraction) {
-    const trn = interaction.options.get('trn').value as string;
+    const trn = normalizeTRN(interaction.options.get('trn').value as string);
     const trainTimetable = (await getTodaysTimetable()).trains[trn];
 
     let train: FullTrainResponse;

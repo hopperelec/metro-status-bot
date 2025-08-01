@@ -10,6 +10,7 @@ import {HISTORY_PAGE_ROWS} from "../constants";
 import {proxy} from "../bot";
 import {parseLastSeen, PropsFilter, TimeFilter, TimesApiData, TrainHistoryOptions} from "metro-api-client";
 import {renderPlatform, renderTimesAPILastSeen} from "../rendering";
+import {normalizeTRN} from "./index";
 
 interface RenderedEntry {
     date: Date;
@@ -385,7 +386,7 @@ function timeStringToDate(time: string) {
 }
 
 export default async function command(interaction: CommandInteraction) {
-    const trn = interaction.options.get('trn').value as string;
+    const trn = normalizeTRN(interaction.options.get('trn').value as string);
     if (trn.includes(':')) {
         await interaction.reply({
             content: "TRN cannot contain a colon.",

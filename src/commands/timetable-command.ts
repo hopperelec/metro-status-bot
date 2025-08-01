@@ -3,6 +3,7 @@ import {apiConstants, compareTimes, getTodaysTimetable} from "../cache";
 import {DayTimetable, TrainTimetableEntry} from "metro-api-client";
 import {proxy} from "../bot";
 import {locationsMatch} from "../timetable";
+import {normalizeTRN} from "./index";
 
 function formatTime(time: number | undefined) {
     if (time === undefined) return '--:--:--';
@@ -28,13 +29,8 @@ function parseTime(timeString: string): number | undefined {
     return time;
 }
 
-const T1xx_REGEX = /^T1\d\d$/
-
 export default async function command(interaction: CommandInteraction) {
-    const trns = (interaction.options.get('trns')?.value as string | undefined)?.split(',').map(trn => {
-        trn = trn.trim();
-        return T1xx_REGEX.test(trn) ? trn.substring(1) : trn; // Remove leading 'T' if present
-    });
+    const trns = (interaction.options.get('trns')?.value as string | undefined)?.split(',').map(normalizeTRN);
 
     const locationsString = interaction.options.get('locations')?.value as string | undefined;
     const locations = locationsString ? locationsString.split(',').map(loc => loc.trim()) : undefined;

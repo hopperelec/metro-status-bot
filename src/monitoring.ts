@@ -394,11 +394,11 @@ async function handleDisappearedTrain(trn: string, prev: Omit<ActiveTrainHistory
     const trainTimetable = (await getTodaysTimetable()).trains[trn];
     if (trainTimetable) {
         if (getExpectedTrainState(trainTimetable, secondsSinceMidnight(lastHeartbeat)).inService) {
-            await announceDisappearedTrain({trn, ...prev});
+            await announceDisappearedTrain({trn, timetable: trainTimetable, ...prev});
             missingTrains.set(trn, { announced: true, whenToForget: whenIsNextDay(lastHeartbeat) });
         }
     } else {
-        await announceTrainOnWrongDayDisappeared({trn, ...prev});
+        await announceTrainOnWrongDayDisappeared({trn, timetable: trainTimetable, ...prev});
     }
 }
 
@@ -419,7 +419,11 @@ async function checkMissingTrains() {
         if (details.announced) {
             if (details.whenToForget < lastHeartbeat) missingTrains.delete(trn);
         } else if (details.announced === false && details.whenToAnnounce < lastHeartbeat) {
-            await announceDisappearedTrain({trn, ...details.prevStatus});
+            await announceDisappearedTrain({
+                trn,
+                timetable: (await getTodaysTimetable()).trains[trn],
+                ...details.prevStatus
+            });
             missingTrains.set(trn, { announced: true, whenToForget: whenIsNextDay(lastHeartbeat) });
         }
     }
@@ -518,7 +522,11 @@ async function onNewTrainsHistory(payload: FullNewTrainsHistoryPayload) {
                 // Its disappearance hadn't been announced yet, so don't announce its reappearance
                 continue;
             }
-            await announceReappearedTrain({trn, ...curr});
+            await announceReappearedTrain({
+                trn,
+                timetable: (await getTodaysTimetable()).trains[trn],
+                ...curr
+            });
         }
     }
     for (const { trn } of reappearedTrains) {

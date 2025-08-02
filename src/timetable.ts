@@ -26,6 +26,14 @@ export function getTimetabledTrains(timetable: DayTimetable, time: number) {
         .map(([trn]) => trn);
 }
 
+export function isNightHours(trainTimetable: TrainTimetable, date: Date) {
+    const time = secondsSinceMidnight(date);
+    const firstEntry = trainTimetable[0];
+    if (firstEntry.departureTime && compareTimes(time, firstEntry.departureTime) < 0) return true;
+    const lastEntry = trainTimetable[trainTimetable.length - 1];
+    return lastEntry.arrivalTime && compareTimes(time, lastEntry.arrivalTime) > 0;
+}
+
 export function getExpectedTrainState(trainTimetable: TrainTimetable, time: number): ExpectedTrainState {
     for (const [index, entry] of trainTimetable.entries()) {
         if (entry.arrivalTime && compareTimes(entry.arrivalTime, time) > 0) {

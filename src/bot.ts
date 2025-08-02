@@ -24,16 +24,21 @@ let mainChannel: TextChannel;
 client.once(Events.ClientReady, async () => {
     console.log('Bot is ready!');
     await registerCommands(client);
-    if (MAIN_CHANNEL_ID) {
-        mainChannel = await client.channels.fetch(MAIN_CHANNEL_ID) as TextChannel;
-        if (mainChannel) {
-            await startMonitoring();
-        } else {
-            console.warn("Could not connect to main channel, will not monitor trains.");
-        }
-    } else {
-        console.warn("MAIN_CHANNEL_ID environment variable not set, will not monitor trains.")
+    if (!MAIN_CHANNEL_ID) {
+        console.warn("MAIN_CHANNEL_ID environment variable not set, will not monitor trains.");
+        return;
     }
+    const channel = await client.channels.fetch(MAIN_CHANNEL_ID);
+    if (!channel) {
+        console.warn("Could not find the main channel, will not monitor trains.");
+        return;
+    }
+    if (!(channel instanceof TextChannel)) {
+        console.warn("Main channel must be a text channel, but MAIN_CHANNEL_ID refers to a different type of channel. Will not monitor trains.");
+        return;
+    }
+    mainChannel = channel;
+    await startMonitoring();
 });
 
 client.on(Events.InteractionCreate, handleInteraction);

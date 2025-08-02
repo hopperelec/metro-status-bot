@@ -7,3 +7,9 @@ function getShiftedDayKey(date: Date) {
 export function isToday(date: Date): boolean {
     return getShiftedDayKey(lastHeartbeat) === getShiftedDayKey(date);
 }
+
+export function isInSharedStretch(stationCode?: string) {
+    return stationCode &&
+        apiConstants.LINES.yellow.includes(stationCode) &&
+        apiConstants.LINES.green.includes(stationCode)
+}

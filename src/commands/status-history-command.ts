@@ -203,6 +203,8 @@ async function defaultFetch(
     time: TrainHistoryOptions["time"],
     historyProperty: IterativePropertyChoice<unknown>
 ) {
+    // By default, we repeatedly fetch `limit` entries until we have `HISTORY_PAGE_ROWS`.
+
     const isTo = time === undefined || 'to' in time;
 
     const props = ["extract.date"];

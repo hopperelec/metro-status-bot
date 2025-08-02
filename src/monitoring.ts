@@ -16,29 +16,34 @@ import {
     announceUnparseableLastEventLocation,
     announceTrainAtStJamesP2,
     announceTrainAtUnrecognisedPlatform,
-    announceTrainAtSouthShieldsP1, announceECS, announceTrainsAtBothPlatformsStJames
+    announceTrainAtSouthShieldsP1,
+    announceECS,
+    announceTrainsAtBothPlatformsStJames,
+    announceTrainAtSunderlandP1orP4
 } from "./rendering";
 import {proxy, updateActivity} from "./bot";
 import {
-    apiConstants,
-    getStationCode,
-    refreshCache,
-    lastHistoryEntries, compareTimes,
+    apiConstants, getStationCode, refreshCache, lastHistoryEntries, compareTimes,
     trainsWithHistory, setLastHeartbeat, lastHeartbeat, getTodaysTimetable
 } from "./cache";
 import {
     ActiveTrainHistoryEntry,
     ActiveTrainHistoryStatus,
-    CollatedTrain, FullNewTrainsHistoryPayload, FullTrainsResponse,
-    ParsedLastSeen, ParsedTimesAPILocation, parseLastSeen, parseTimesAPILocation, PlatformNumber, TimesApiData,
-    TrainStatusesApiData, TrainTimetable
+    CollatedTrain,
+    FullNewTrainsHistoryPayload,
+    FullTrainsResponse,
+    ParsedLastSeen,
+    ParsedTimesAPILocation,
+    parseLastSeen,
+    parseTimesAPILocation,
+    PlatformNumber,
+    TimesApiData,
+    TrainHistoryEntry,
+    TrainStatusesApiData,
 } from "metro-api-client";
-import {
-    getExpectedTrainState,
-    secondsSinceMidnight,
-    whenIsNextDay
-} from "./timetable";
+import {getExpectedTrainState, isNightHours, secondsSinceMidnight, whenIsNextDay} from "./timetable";
 import {TrainEmbedData} from "./rendering";
+import {isInSharedStretch} from "./utils";
 
 type TrainCheckData<Status = ActiveTrainHistoryStatus> = {
     trn: string;
@@ -61,10 +66,10 @@ const missingTrains = new Map<string, {
     whenToAnnounce: Date;
 }>;
 
-let embedDatas: Record<string, TrainEmbedData> = {};
+let embedDataCache: Record<string, TrainEmbedData> = {};
 async function getFullEmbedData({ trn, curr }: TrainCheckData): Promise<TrainEmbedData> {
     // So that `nextPlatforms` is only fetched once if needed
-    let embedData = embedDatas[trn];
+    let embedData = embedDataCache[trn];
     if (embedData) return embedData;
 
     let fullStatus: CollatedTrain;
@@ -96,11 +101,10 @@ async function getFullEmbedData({ trn, curr }: TrainCheckData): Promise<TrainEmb
         status: fullStatus,
         timetable: (await getTodaysTimetable()).trains[trn],
     }
-    embedDatas[trn] = embedData
+    embedDataCache[trn] = embedData
     return embedData;
 }
 
-// Doesn't announce on its own, in case I want to handle each API separately
 async function checkPlatform(
     trn: string,
     stationName: string,
@@ -109,30 +113,39 @@ async function checkPlatform(
 ) {
     switch (platform) {
         case 1:
-            if (stationName === 'South Shields') return 'sss-p1';
             if (stationName === 'South Hylton') return 'unrecognised';
+            if (stationName === 'Sunderland') return 'sun-p14';
+            if (stationName === 'South Shields') {
+                // For some reason, any trains at South Shields platform 2 after midnight appear at platform 1 on the API.
+                // This is clearly a bug in the API because trains at platform 2 at midnight will seemingly teleport to platform 1 with the same arrival time.
+                // So don't announce trains at South Shields platform 1 after midnight.
+                if (time >= apiConstants.NEW_DAY_HOUR * 3600) return 'sss-p1';
+            }
             return;
         case 2:
-            if (stationName !== "St James") return;
-            const trainTimetable = (await getTodaysTimetable()).trains[trn];
-            if (!trainTimetable) return;
-            const firstEntry = trainTimetable[0];
-            if (
-                firstEntry.location === "SJM_2" && firstEntry.departureTime &&
-                compareTimes(time, firstEntry.departureTime) <= 0
-            ) return;
-            const lastEntry = trainTimetable[trainTimetable.length - 1];
-            if (
-                lastEntry.location === "SJM_2" && lastEntry.arrivalTime &&
-                compareTimes(time, lastEntry.arrivalTime) >= 0
-            ) return;
-            return "sjm-p2";
+            if (stationName === 'St James') {
+                const trainTimetable = (await getTodaysTimetable()).trains[trn];
+                if (!trainTimetable) return;
+                const firstEntry = trainTimetable[0];
+                if (
+                    firstEntry.location === 'SJM_2' && firstEntry.departureTime &&
+                    compareTimes(time, firstEntry.departureTime) <= 0
+                ) return;
+                const lastEntry = trainTimetable[trainTimetable.length - 1];
+                if (
+                    lastEntry.location === 'SJM_2' && lastEntry.arrivalTime &&
+                    compareTimes(time, lastEntry.arrivalTime) >= 0
+                ) return;
+                return "sjm-p2";
+            }
+            return;
         case 3:
-            if (stationName === "Sunderland") return;
-            // fall-through
+            if (stationName === 'Monument' || stationName === 'Sunderland') return;
+            return 'unrecognised';
         case 4:
-            if (stationName === "Monument") return;
-            // fall-through
+            if (stationName === 'Monument') return;
+            if (stationName === 'Sunderland') return 'sun-p24';
+            return 'unrecognised';
         default:
             return 'unrecognised';
     }
@@ -158,18 +171,15 @@ async function trainStatusesChecks(
     parsedLastSeen?: ParsedLastSeen
 ) {
     if (!parsedLastSeen) {
-        await announceUnparseableLastSeen(await getFullEmbedData(checkData));
+        const { trn, prev } = checkData;
+        await announceUnparseableLastSeen(
+            await getFullEmbedData(checkData),
+            { trn, ...prev }
+        );
     }
 }
 
-function isNightHours(trainTimetable: TrainTimetable, time: number) {
-    const firstEntry = trainTimetable[0];
-    if (firstEntry.departureTime && compareTimes(time, firstEntry.departureTime) < 0) return true;
-    const lastEntry = trainTimetable[trainTimetable.length - 1];
-    return lastEntry.arrivalTime && compareTimes(time, lastEntry.arrivalTime) > 0;
-}
-
-async function shouldAnnounceUntimetabledActivity(
+async function checkIfTimetabled(
     checkData: TrainCheckData,
     parsedLastSeen?: ParsedLastSeen
 ) {
@@ -181,11 +191,7 @@ async function shouldAnnounceUntimetabledActivity(
     const trainTimetable = (await getTodaysTimetable()).trains[trn];
     if (!trainTimetable) return "wrong-day";
 
-    if (curr.status.timesAPI) {
-        const dateInTimes = curr.status.timesAPI.lastEvent.time;
-        const timeInTimes = secondsSinceMidnight(dateInTimes);
-        if (isNightHours(trainTimetable, timeInTimes)) return "night-hours";
-    }
+    if (curr.status.timesAPI && isNightHours(trainTimetable, curr.status.timesAPI.lastEvent.time)) return "night-hours";
 
     if (parsedLastSeen) {
         const dateInStatuses = new Date(curr.date);
@@ -194,8 +200,7 @@ async function shouldAnnounceUntimetabledActivity(
         if (parsedLastSeen.hours - curr.date.getHours() >= 12) {
             dateInStatuses.setDate(dateInStatuses.getDate() - 1);
         }
-        const timeInStatuses = secondsSinceMidnight(dateInStatuses);
-        if (isNightHours(trainTimetable, timeInStatuses)) return "night-hours";
+        if (isNightHours(trainTimetable, dateInStatuses)) return "night-hours";
     }
 
     if (trainTimetable.every(entry => !entry.inService)) return "ecs";
@@ -263,7 +268,7 @@ async function eitherAPIChecks(
 ) {
     const { trn, curr, prev } = checkData;
 
-    const shouldBeActive = await shouldAnnounceUntimetabledActivity(checkData, parsedLastSeen);
+    const shouldBeActive = await checkIfTimetabled(checkData, parsedLastSeen);
     if (shouldBeActive === "wrong-day") {
         await announceTrainOnWrongDay(await getFullEmbedData(checkData));
     } else if (shouldBeActive === "night-hours") {
@@ -281,6 +286,8 @@ async function eitherAPIChecks(
         );
     }
 
+    let shouldCheckPlatform = true;
+
     if (shouldAnnounceUnrecognisedStation(checkData, parsedLastSeen, timesAPILocation)) {
         await announceTrainAtUnrecognisedStation(
             await getFullEmbedData(checkData),
@@ -288,64 +295,71 @@ async function eitherAPIChecks(
             parsedLastSeen.station // should be same as timesAPILocation.station
         );
         // Don't check the platform if the station is unrecognized
-        return;
+        shouldCheckPlatform = false;
     }
 
     // --- Platform checks ---
     // Don't check the platform if each API is reporting a different platform
     if (parsedLastSeen && timesAPILocation && parsedLastSeen.platform !== timesAPILocation.platform) {
-        return;
+        shouldCheckPlatform = false;
     }
 
     // Don't check the platform if the location hasn't changed
     if (prev?.status?.timesAPI) {
-        if (curr.status.timesAPI?.lastEvent.location === prev.status.timesAPI.lastEvent.location) return;
+        if (curr.status.timesAPI?.lastEvent.location === prev.status.timesAPI.lastEvent.location) {
+            shouldCheckPlatform = false;
+        }
     } else if (prev?.status?.trainStatusesAPI) {
         const parsedPrevLastSeen = parseLastSeen(prev.status.trainStatusesAPI.lastSeen);
         if (
             parsedLastSeen?.station === parsedPrevLastSeen?.station &&
             parsedLastSeen?.platform === parsedPrevLastSeen?.platform
-        ) return;
+        ) shouldCheckPlatform = false;
     }
 
-    const platformCheck = await checkPlatform(
-        trn,
-        parsedLastSeen?.station ?? timesAPILocation.station,
-        parsedLastSeen?.platform ?? timesAPILocation.platform,
-        secondsSinceMidnight(checkData.curr.date)
-    );
-    if (platformCheck === "sss-p1") {
-        // For some reason, any trains at South Shields platform 2 after midnight appear at platform 1 on the API.
-        // This is clearly a bug in the API because trains at platform 2 at midnight will seemingly teleport to platform 1 with the same arrival time.
-        // So don't announce trains at South Shields platform 1 after midnight.
-        if (curr.date.getHours() >= apiConstants.NEW_DAY_HOUR) {
-            await announceTrainAtSouthShieldsP1(await getFullEmbedData(checkData));
-        }
-    } else if (platformCheck === "sjm-p2") {
-        const fullEmbedData = await getFullEmbedData(checkData);
-        // Check if there is a train at St James platform 1
-        const trains = await proxy.getTrains() as FullTrainsResponse;
-        const sjmP1Train = Object.entries(trains.trains).find(
-            ([_, train]) => {
-                if (train.status.timesAPI?.lastEvent.location === "St James Platform 1") return true;
-                const parsedLastSeen = parseLastSeen(train.status.trainStatusesAPI?.lastSeen);
-                return parsedLastSeen?.station === "SJM" && parsedLastSeen?.platform === 1;
-            }
+    if (shouldCheckPlatform) {
+        const platformNumber = timesAPILocation?.platform ?? parsedLastSeen?.platform;
+        const platformCheck = await checkPlatform(
+            trn,
+            parsedLastSeen?.station ?? timesAPILocation.station,
+            platformNumber,
+            secondsSinceMidnight(checkData.curr.date)
         );
-        if (sjmP1Train) {
-            await announceTrainsAtBothPlatformsStJames(
-                fullEmbedData,
-                {
-                    trn: sjmP1Train[0],
-                    date: sjmP1Train[1].lastChanged,
-                    status: sjmP1Train[1].status
+        if (platformCheck === "sss-p1") {
+            // For some reason, any trains at South Shields platform 2 after midnight appear at platform 1 on the API.
+            // This is clearly a bug in the API because trains at platform 2 at midnight will seemingly teleport to platform 1 with the same arrival time.
+            // So don't announce trains at South Shields platform 1 after midnight.
+            if (curr.date.getHours() >= apiConstants.NEW_DAY_HOUR) {
+                await announceTrainAtSouthShieldsP1(await getFullEmbedData(checkData));
+            }
+        } else if (platformCheck === "sjm-p2") {
+            const fullEmbedData = await getFullEmbedData(checkData);
+            // Check if there is a train at St James platform 1
+            const trains = await proxy.getTrains() as FullTrainsResponse;
+            const sjmP1Train = Object.entries(trains.trains).find(
+                ([_, train]) => {
+                    if (train.status.timesAPI?.lastEvent.location === "St James Platform 1") return true;
+                    const parsedLastSeen = parseLastSeen(train.status.trainStatusesAPI?.lastSeen);
+                    return parsedLastSeen?.station === "SJM" && parsedLastSeen?.platform === 1;
                 }
             );
-        } else {
-            await announceTrainAtStJamesP2(fullEmbedData);
+            if (sjmP1Train) {
+                await announceTrainsAtBothPlatformsStJames(
+                    fullEmbedData,
+                    {
+                        trn: sjmP1Train[0],
+                        date: sjmP1Train[1].lastChanged,
+                        status: sjmP1Train[1].status
+                    }
+                );
+            } else {
+                await announceTrainAtStJamesP2(fullEmbedData);
+            }
+        } else if (platformCheck === 'sun-p14') {
+            await announceTrainAtSunderlandP1orP4(await getFullEmbedData(checkData), platformNumber as 1 | 4);
+        } else if (platformCheck === "unrecognised") {
+            await announceTrainAtUnrecognisedPlatform(await getFullEmbedData(checkData));
         }
-    } else if (platformCheck === "unrecognised") {
-        await announceTrainAtUnrecognisedPlatform(await getFullEmbedData(checkData));
     }
 }
 
@@ -414,23 +428,14 @@ async function checkMissingTrains() {
 function isDepartedFGTtoShared(status: ActiveTrainHistoryStatus) {
     if (
         status.timesAPI?.lastEvent.location.startsWith("Fellgate Platform ") &&
-        status.timesAPI?.lastEvent.type === "DEPARTED"
-    ) {
-        const destinationCode = getStationCode(status.timesAPI?.plannedDestinations[0].name);
-        if (
-            destinationCode &&
-            apiConstants.LINES.yellow.includes(destinationCode) &&
-            apiConstants.LINES.green.includes(destinationCode)
-        ) return true;
-    }
+        status.timesAPI?.lastEvent.type === "DEPARTED" &&
+        isInSharedStretch(getStationCode(status.timesAPI?.plannedDestinations[0].name))
+    ) return true;
     if (!status.trainStatusesAPI) return false;
-    const destinationCode = getStationCode(status.trainStatusesAPI.destination);
-    if (!destinationCode) return false;
     const parsedLastSeen = parseLastSeen(status.trainStatusesAPI.lastSeen);
     return parsedLastSeen?.station === "FGT" &&
         parsedLastSeen.state === "Departed" &&
-        apiConstants.LINES.yellow.includes(destinationCode) &&
-        apiConstants.LINES.green.includes(destinationCode);
+        isInSharedStretch(getStationCode(status.trainStatusesAPI.destination))
 }
 
 async function onNewTrainsHistory(payload: FullNewTrainsHistoryPayload) {
@@ -447,16 +452,13 @@ async function onNewTrainsHistory(payload: FullNewTrainsHistoryPayload) {
         trn: string,
         curr: Omit<ActiveTrainHistoryEntry, "active">,
     }[] = [];
-    embedDatas = {};
     for (const [trn, trainData] of Object.entries(payload.trains)) {
-        const historyEntry = {date: payload.date, ...trainData};
+        const historyEntry = {date: payload.date, ...trainData} as TrainHistoryEntry;
         if (historyEntry.active) {
-            // I'm not sure why ActiveHistoryEntry isn't being narrowed from the `if`
-            const activeHistoryEntry = historyEntry as ActiveTrainHistoryEntry;
-            const activeHistoryStatus = activeHistoryEntry.status;
+            const activeHistoryStatus = historyEntry.status;
             await checkActiveTrain({
                 trn,
-                curr: activeHistoryEntry,
+                curr: historyEntry,
                 prev: lastHistoryEntries[trn]
             });
             lastHistoryEntries[trn] = {
@@ -467,7 +469,7 @@ async function onNewTrainsHistory(payload: FullNewTrainsHistoryPayload) {
             updatedActiveTrains[trn] = activeHistoryStatus;
             if (missingTrains.has(trn)) {
                 missingTrains.delete(trn);
-                reappearedTrains.push({ trn, curr: activeHistoryEntry });
+                reappearedTrains.push({ trn, curr: historyEntry });
             }
         } else {
             let prev = lastHistoryEntries[trn];
@@ -528,6 +530,9 @@ async function onNewTrainsHistory(payload: FullNewTrainsHistoryPayload) {
     if (numberOfCurrentlyActiveTrains !== numberOfPreviouslyActiveTrains) {
         await updateActivity(numberOfCurrentlyActiveTrains);
     }
+
+    // All the announcements for this heartbeat have been made, so the cached embed data is no longer needed
+    embedDataCache = {};
 }
 
 const ongoingErrors = new Set<string>();

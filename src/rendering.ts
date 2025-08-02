@@ -141,7 +141,7 @@ export function renderPlatform(stationCode: string, platform?: number) {
         MONUMENT_STATION_CODES.includes(stationCode)
             ? "Monument"
             : apiConstants.LOCATION_ABBREVIATIONS[stationCode] || stationCode
-    } Platform ${platform}`;
+    } platform ${platform}`;
 }
 
 const PLATFORM_CODE_REGEX = /^(?<station>[A-Z]{3});(?<platform>[1-4])$/;
@@ -279,14 +279,8 @@ export async function announceUnrecognisedDestinations(
             message = `has a new unrecognised current and/or planned destination "${destination}"`;
         }
     } else {
-        for (const [i, destination] of unrecognisedDestinations.entries()) {
-            if (destination === "") {
-                unrecognisedDestinations[i] = `*[BLANK]* (often happens when it is actually heading to Bede)`;
-            } else {
-                unrecognisedDestinations[i] = `"${destination}"`;
-            }
-        }
-        message = `has ${unrecognisedDestinations.length} new unrecognised destinations: ${unrecognisedDestinations.join(", ")}`;
+        const renderedDestinations = unrecognisedDestinations.map(dest => dest === "" ? "*[BLANK]* (often happens when it is actually heading to Bede)" : `"${dest}"`);
+        message = `has ${renderedDestinations.length} new unrecognised destinations: ${renderedDestinations.join(", ")}`;
     }
     await alert({
         content: `🤔 Train T${currStatus.trn} ${message}`,
@@ -342,6 +336,13 @@ export async function announceTrainAtSouthShieldsP1(train: TrainEmbedData) {
     });
 }
 
+export async function announceTrainAtSunderlandP1orP4(train: TrainEmbedData, platform: 1 | 4) {
+    await alert({
+        content: `🤔 Train T${train.trn} is at Sunderland platform ${platform}, but Metro trains are currently only meant to use platforms 2 and 3.`,
+        embeds: [trainEmbed(train)]
+    });
+}
+
 export async function announceAllTrainsDisappeared() {
     await alert({content: `❌ All trains have disappeared!`});
 }
@@ -370,10 +371,13 @@ export async function announceMultipleReappearedTrains(trns: Set<string>) {
 
 // Train statuses API
 
-export async function announceUnparseableLastSeen(currStatus: TrainEmbedData) {
+export async function announceUnparseableLastSeen(
+    currStatus: TrainEmbedData,
+    prevStatus: TrainEmbedData
+) {
     await alert({
         content: `⚠️ Not able to parse the last seen message (from the train statuses API) for train T${currStatus.trn}.`,
-        embeds: [trainEmbed(currStatus)]
+        embeds: [trainEmbed(currStatus), prevTrainStatusEmbed(prevStatus)]
     });
 }
 

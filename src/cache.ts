@@ -15,12 +15,12 @@ let whenToRefreshTimetable: Date
 let todaysTimetable: DayTimetable;
 
 async function refreshTodaysTimetable() {
-    whenToRefreshTimetable = whenIsNextDay(lastHeartbeat);
     todaysTimetable = await proxy.getTimetable({ date: lastHeartbeat });
 }
 
 export async function getTodaysTimetable() {
     if (whenToRefreshTimetable < lastHeartbeat) {
+        whenToRefreshTimetable = whenIsNextDay(lastHeartbeat);
         await refreshTodaysTimetable();
     }
     return todaysTimetable;
@@ -32,25 +32,30 @@ export let trainsWithHistory = new Set<string>();
 
 export async function refreshCache(proxy: MetroApiClient) {
     console.log("Refreshing cache...");
-    apiConstants = await proxy.getConstants();
+    await Promise.all([
+        proxy.getConstants().then(constants => apiConstants = constants),
 
-    const trainsResponse = await proxy.getTrains() as FullTrainsResponse;
-    lastHistoryEntries = Object.fromEntries(
-        Object.entries(trainsResponse.trains).map(([trn, train]) => {
-            return [trn, {
-                date: train.lastChanged,
-                active: true,
-                status: train.status,
-            }];
-        })
-    )
-    lastHeartbeat = trainsResponse.lastChecked;
+        refreshTodaysTimetable(),
 
-    await refreshTodaysTimetable();
+        proxy.getTrains().then(async (trainsResponse: FullTrainsResponse) => {
+            lastHistoryEntries = Object.fromEntries(
+                Object.entries(trainsResponse.trains).map(([trn, train]) => {
+                    return [trn, {
+                        date: train.lastChanged,
+                        active: true,
+                        status: train.status,
+                    }];
+                })
+            );
+            lastHeartbeat = trainsResponse.lastChecked;
+            await updateActivity(Object.keys(trainsResponse.trains).length);
+        }),
 
-    const historySummary = await proxy.getHistorySummary();
-    trainsWithHistory = new Set(Object.keys(historySummary.trains));
-    await updateActivity(Object.keys(trainsResponse.trains).length);
+        proxy.getHistorySummary().then(historySummary => {
+            trainsWithHistory = new Set(Object.keys(historySummary.trains));
+        }),
+    ]);
+    whenToRefreshTimetable = whenIsNextDay(lastHeartbeat);
 }
 
 export function getStationCode(station: string, platform?: PlatformNumber) {

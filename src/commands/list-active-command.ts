@@ -22,10 +22,14 @@ export default {
     },
 
     execute: async interaction => {
-        // TODO: This only needs to know in which APIs it is active, might need to add an option in the proxy for presence in props
-        const activeTrains = await proxy.getTrains() as FullTrainsResponse;
+        const [activeTrains, todaysTimetable] = await Promise.all([
+            // TODO:
+            //  This only needs to know in which APIs it is active;
+            //  might need to add an option in the proxy for presence in props
+            proxy.getTrains().then(response => response as FullTrainsResponse),
+            getTodaysTimetable()
+        ]);
 
-        const todaysTimetable = await getTodaysTimetable();
         const timetabledTrains = getTimetabledTrains(todaysTimetable, secondsSinceMidnight());
         const activeTrainsFromTimesAPI: string[] = [];
         const activeTrainsFromTrainStatusesAPI: string[] = [];

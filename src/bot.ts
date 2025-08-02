@@ -23,7 +23,7 @@ let mainChannel: TextChannel;
 
 client.once(Events.ClientReady, async () => {
     console.log('Bot is ready!');
-    await registerCommands(client);
+    registerCommands(client).then();
     if (!MAIN_CHANNEL_ID) {
         console.warn("MAIN_CHANNEL_ID environment variable not set, will not monitor trains.");
         return;
@@ -38,7 +38,7 @@ client.once(Events.ClientReady, async () => {
         return;
     }
     mainChannel = channel;
-    await startMonitoring();
+    startMonitoring().then();
 });
 
 client.on(Events.InteractionCreate, handleInteraction);

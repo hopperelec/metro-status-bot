@@ -52,29 +52,25 @@ export default {
         const trn = normalizeTRN(interaction.options.get('trn').value as string);
         const afterOption = interaction.options.get('after')?.value as boolean | undefined;
 
-        const trainTimetable = (
-            isToday(date)
-                ? await getTodaysTimetable()
-                : await proxy.getTimetable({
-                    date,
-                    trns: [trn],
-                })
-        ).trains[trn];
+        const [trainTimetable, train] = await Promise.all([
+            (
+                isToday(date)
+                    ? getTodaysTimetable()
+                    : proxy.getTimetable({ date, trns: [trn] })
+            ).then(dayTimetable => dayTimetable.trains[trn]),
 
-        const trainHistory = await proxy.getTrainHistory(trn, {
-            time: afterOption ? { from: date } : { to: date },
-            limit: 1,
-        });
-        const train = trainHistory.extract[0];
+            proxy.getTrainHistory(trn, {
+                time: afterOption ? { from: date } : { to: date },
+                limit: 1,
+            }).then(history => history.extract[0])
+        ]);
 
         let lines: string[] = [];
-
         if (train?.active) {
             lines.push(`This train was active, and it's status at the specified time is shown below.`);
         } else {
             lines.push(`No train with TRN ${trn} was showing on the Pop app at the specified time.`);
         }
-
         if (trainTimetable) {
             const timetabledStatus = getExpectedTrainState(trainTimetable, secondsSinceMidnight(date));
             lines.push(`It should ${renderExpectedTrainState(timetabledStatus, true)}.`);
@@ -82,7 +78,7 @@ export default {
             lines.push("This train was not timetabled to run on that day.");
         }
 
-        if (train?.active) {
+        if (train && train.active) {
             await interaction.reply({
                 content: lines.join('\n'),
                 embeds: [trainEmbed({ trn, date: train.date, status: train.status, timetable: trainTimetable })],

@@ -31,7 +31,7 @@ import {
     ActiveTrainHistoryStatus,
     CollatedTrain,
     FullNewTrainsHistoryPayload,
-    FullTrainsResponse,
+    FullTrainsResponse, HeartbeatErrorPayload,
     ParsedLastSeen,
     ParsedTimesAPILocation,
     parseLastSeen,
@@ -57,6 +57,8 @@ type TrainCheckData<Status = ActiveTrainHistoryStatus> = {
     };
 }
 
+type ActiveTrainAnnouncer = (fullEmbedData: TrainEmbedData) => Promise<void>;
+
 const missingTrains = new Map<string, {
     announced: true;
     whenToForget: Date;
@@ -66,11 +68,8 @@ const missingTrains = new Map<string, {
     whenToAnnounce: Date;
 }>;
 
-let embedDataCache: Record<string, TrainEmbedData> = {};
 async function getFullEmbedData({ trn, curr }: TrainCheckData): Promise<TrainEmbedData> {
-    // So that `nextPlatforms` is only fetched once if needed
-    let embedData = embedDataCache[trn];
-    if (embedData) return embedData;
+    const timetablePromise = getTodaysTimetable();
 
     let fullStatus: CollatedTrain;
     if (curr.status.timesAPI) {
@@ -95,14 +94,13 @@ async function getFullEmbedData({ trn, curr }: TrainCheckData): Promise<TrainEmb
         // Nothing to add
         fullStatus = curr.status as CollatedTrain;
     }
-    embedData = {
+
+    return {
         trn,
         date: curr.date,
         status: fullStatus,
-        timetable: (await getTodaysTimetable()).trains[trn],
-    }
-    embedDataCache[trn] = embedData
-    return embedData;
+        timetable: (await timetablePromise).trains[trn],
+    };
 }
 
 async function checkPlatform(
@@ -155,28 +153,24 @@ async function checkPlatform(
 async function timesAPIChecks(
     checkData: TrainCheckData<{ timesAPI: TimesApiData }>,
     timesAPILocation?: ParsedTimesAPILocation
-) {
+): Promise<ActiveTrainAnnouncer[]> {
     if (!timesAPILocation) {
         const { trn, prev } = checkData;
-        await announceUnparseableLastEventLocation(
-            await getFullEmbedData(checkData),
-            { trn, ...prev }
-        )
+        return [fullEmbedData => announceUnparseableLastEventLocation(fullEmbedData, { trn, ...prev })];
     }
+    return [];
 }
 
 // Checks which depend on the train statuses API, but don't depend on the times API
 async function trainStatusesChecks(
     checkData: TrainCheckData<{ trainStatusesAPI: TrainStatusesApiData }>,
     parsedLastSeen?: ParsedLastSeen
-) {
+): Promise<ActiveTrainAnnouncer[]> {
     if (!parsedLastSeen) {
         const { trn, prev } = checkData;
-        await announceUnparseableLastSeen(
-            await getFullEmbedData(checkData),
-            { trn, ...prev }
-        );
+        return [fullEmbedData => announceUnparseableLastSeen(fullEmbedData, { trn, ...prev })];
     }
+    return [];
 }
 
 async function checkIfTimetabled(
@@ -265,40 +259,42 @@ async function eitherAPIChecks(
     checkData: TrainCheckData,
     parsedLastSeen?: ParsedLastSeen,
     timesAPILocation?: ParsedTimesAPILocation
-) {
+): Promise<ActiveTrainAnnouncer[]> {
     const { trn, curr, prev } = checkData;
+    const announcements: ActiveTrainAnnouncer[] = [];
+    let shouldCheckPlatform = true;
 
-    const shouldBeActive = await checkIfTimetabled(checkData, parsedLastSeen);
-    if (shouldBeActive === "wrong-day") {
-        await announceTrainOnWrongDay(await getFullEmbedData(checkData));
-    } else if (shouldBeActive === "night-hours") {
-        await announceTrainDuringNightHours(await getFullEmbedData(checkData));
-    } else if (shouldBeActive === "ecs") {
-        await announceECS(await getFullEmbedData(checkData));
-    }
+    const checkPromises: Promise<void>[] = [
+        checkIfTimetabled(checkData, parsedLastSeen).then((shouldBeActive) => {
+            if (shouldBeActive === "wrong-day") {
+                announcements.push(announceTrainOnWrongDay)
+            } else if (shouldBeActive === "night-hours") {
+                announcements.push(announceTrainDuringNightHours);
+            } else if (shouldBeActive === "ecs") {
+                announcements.push(announceECS);
+            }
+        })
+    ];
 
     const newUnrecognisedDestinations = getNewUnrecognisedDestinations(checkData);
     if (newUnrecognisedDestinations.length) {
-        await announceUnrecognisedDestinations(
-            await getFullEmbedData(checkData),
+        announcements.push((fullEmbedData) => announceUnrecognisedDestinations(
+            fullEmbedData,
             { trn, ...prev },
             newUnrecognisedDestinations
-        );
+        ));
     }
 
-    let shouldCheckPlatform = true;
-
     if (shouldAnnounceUnrecognisedStation(checkData, parsedLastSeen, timesAPILocation)) {
-        await announceTrainAtUnrecognisedStation(
-            await getFullEmbedData(checkData),
+        announcements.push((fullEmbedData) => announceTrainAtUnrecognisedStation(
+            fullEmbedData,
             { trn, ...prev },
-            parsedLastSeen.station // should be same as timesAPILocation.station
-        );
+            parsedLastSeen?.station ?? timesAPILocation?.station
+        ));
         // Don't check the platform if the station is unrecognized
         shouldCheckPlatform = false;
     }
 
-    // --- Platform checks ---
     // Don't check the platform if each API is reporting a different platform
     if (parsedLastSeen && timesAPILocation && parsedLastSeen.platform !== timesAPILocation.platform) {
         shouldCheckPlatform = false;
@@ -319,74 +315,89 @@ async function eitherAPIChecks(
 
     if (shouldCheckPlatform) {
         const platformNumber = timesAPILocation?.platform ?? parsedLastSeen?.platform;
-        const platformCheck = await checkPlatform(
-            trn,
-            parsedLastSeen?.station ?? timesAPILocation.station,
-            platformNumber,
-            secondsSinceMidnight(checkData.curr.date)
-        );
-        if (platformCheck === "sss-p1") {
-            // For some reason, any trains at South Shields platform 2 after midnight appear at platform 1 on the API.
-            // This is clearly a bug in the API because trains at platform 2 at midnight will seemingly teleport to platform 1 with the same arrival time.
-            // So don't announce trains at South Shields platform 1 after midnight.
-            if (curr.date.getHours() >= apiConstants.NEW_DAY_HOUR) {
-                await announceTrainAtSouthShieldsP1(await getFullEmbedData(checkData));
-            }
-        } else if (platformCheck === "sjm-p2") {
-            const fullEmbedData = await getFullEmbedData(checkData);
-            // Check if there is a train at St James platform 1
-            const trains = await proxy.getTrains() as FullTrainsResponse;
-            const sjmP1Train = Object.entries(trains.trains).find(
-                ([_, train]) => {
-                    if (train.status.timesAPI?.lastEvent.location === "St James Platform 1") return true;
-                    const parsedLastSeen = parseLastSeen(train.status.trainStatusesAPI?.lastSeen);
-                    return parsedLastSeen?.station === "SJM" && parsedLastSeen?.platform === 1;
-                }
-            );
-            if (sjmP1Train) {
-                await announceTrainsAtBothPlatformsStJames(
-                    fullEmbedData,
-                    {
-                        trn: sjmP1Train[0],
-                        date: sjmP1Train[1].lastChanged,
-                        status: sjmP1Train[1].status
+        checkPromises.push(
+            checkPlatform(
+                trn,
+                parsedLastSeen?.station ?? timesAPILocation.station,
+                platformNumber,
+                secondsSinceMidnight(checkData.curr.date)
+            ).then(async (platformCheck) => {
+                if (platformCheck === "sss-p1") {
+                    // For some reason, any trains at South Shields platform 2 after midnight appear at platform 1 on the API.
+                    // This is clearly a bug in the API because trains at platform 2 at midnight will seemingly teleport to platform 1 with the same arrival time.
+                    // So don't announce trains at South Shields platform 1 after midnight.
+                    if (curr.date.getHours() >= apiConstants.NEW_DAY_HOUR) {
+                        announcements.push(announceTrainAtSouthShieldsP1);
                     }
-                );
-            } else {
-                await announceTrainAtStJamesP2(fullEmbedData);
-            }
-        } else if (platformCheck === 'sun-p14') {
-            await announceTrainAtSunderlandP1orP4(await getFullEmbedData(checkData), platformNumber as 1 | 4);
-        } else if (platformCheck === "unrecognised") {
-            await announceTrainAtUnrecognisedPlatform(await getFullEmbedData(checkData));
-        }
+                } else if (platformCheck === "sjm-p2") {
+                    // Check if there is a train at St James platform 1
+                    const trains = await proxy.getTrains() as FullTrainsResponse;
+                    const sjmP1Train = Object.entries(trains.trains).find(
+                        ([_, train]) => {
+                            if (train.status.timesAPI?.lastEvent.location === "St James Platform 1") return true;
+                            const parsedLastSeen = parseLastSeen(train.status.trainStatusesAPI?.lastSeen);
+                            return parsedLastSeen?.station === "SJM" && parsedLastSeen?.platform === 1;
+                        }
+                    );
+                    if (sjmP1Train) {
+                        announcements.push(fullEmbedData => announceTrainsAtBothPlatformsStJames(
+                            fullEmbedData,
+                            {
+                                trn: sjmP1Train[0],
+                                date: sjmP1Train[1].lastChanged,
+                                status: sjmP1Train[1].status
+                            }
+                        ));
+                    } else {
+                        announcements.push(announceTrainAtStJamesP2);
+                    }
+                } else if (platformCheck === 'sun-p14') {
+                    announcements.push(fullEmbedData => announceTrainAtSunderlandP1orP4(fullEmbedData, platformNumber as 1 | 4));
+                } else if (platformCheck === "unrecognised") {
+                    announcements.push(announceTrainAtUnrecognisedPlatform);
+                }
+            })
+        )
     }
+
+    await Promise.all(checkPromises);
+    return announcements;
 }
 
 async function checkActiveTrain(checkData: TrainCheckData) {
     const status = checkData.curr.status;
+    const checkPromises: Promise<ActiveTrainAnnouncer[]>[] = [];
+
     let parsedLastSeen: ParsedLastSeen | undefined;
-    let timesAPILocation: ParsedTimesAPILocation | undefined;
     if (status.trainStatusesAPI) {
         parsedLastSeen = parseLastSeen(status.trainStatusesAPI.lastSeen);
-        await trainStatusesChecks(
-            checkData as TrainCheckData<{ trainStatusesAPI: TrainStatusesApiData }>,
-            parsedLastSeen
+        checkPromises.push(
+            trainStatusesChecks(
+                checkData as TrainCheckData<{ trainStatusesAPI: TrainStatusesApiData }>,
+                parsedLastSeen
+            )
         );
     }
+
+    let timesAPILocation: ParsedTimesAPILocation | undefined;
     if (status.timesAPI) {
         timesAPILocation = parseTimesAPILocation(status.timesAPI.lastEvent.location);
-        await timesAPIChecks(
-            checkData as TrainCheckData<{ timesAPI: TimesApiData }>,
-            timesAPILocation
+        checkPromises.push(
+            timesAPIChecks(
+                checkData as TrainCheckData<{ timesAPI: TimesApiData }>,
+                timesAPILocation
+            )
         );
     }
+
     if (status.timesAPI || status.trainStatusesAPI) {
-        await eitherAPIChecks(
-            checkData,
-            parsedLastSeen,
-            timesAPILocation
-        );
+        checkPromises.push(eitherAPIChecks(checkData, parsedLastSeen, timesAPILocation));
+    }
+
+    const announcements = (await Promise.all(checkPromises)).flat();
+    if (announcements.length > 0) {
+        const fullEmbedData = await getFullEmbedData(checkData);
+        await Promise.all(announcements.map(announcer => announcer(fullEmbedData)));
     }
 }
 
@@ -415,18 +426,20 @@ async function handleMultipleDisappearedTrains(trns: Set<string>, isAllTrains: b
 }
 
 async function checkMissingTrains() {
-    for (const [trn, details] of missingTrains) {
-        if (details.announced) {
-            if (details.whenToForget < lastHeartbeat) missingTrains.delete(trn);
-        } else if (details.announced === false && details.whenToAnnounce < lastHeartbeat) {
-            await announceDisappearedTrain({
-                trn,
-                timetable: (await getTodaysTimetable()).trains[trn],
-                ...details.prevStatus
-            });
-            missingTrains.set(trn, { announced: true, whenToForget: whenIsNextDay(lastHeartbeat) });
-        }
-    }
+    await Promise.all(
+        [...missingTrains].map(async ([trn, details]) => {
+            if (details.announced) {
+                if (details.whenToForget < lastHeartbeat) missingTrains.delete(trn);
+            } else if (details.announced === false && details.whenToAnnounce < lastHeartbeat) {
+                await announceDisappearedTrain({
+                    trn,
+                    timetable: (await getTodaysTimetable()).trains[trn],
+                    ...details.prevStatus
+                });
+                missingTrains.set(trn, { announced: true, whenToForget: whenIsNextDay(lastHeartbeat) });
+            }
+        })
+    );
 }
 
 function isDepartedFGTtoShared(status: ActiveTrainHistoryStatus) {
@@ -447,6 +460,7 @@ async function onNewTrainsHistory(payload: FullNewTrainsHistoryPayload) {
     if (Object.keys(payload.trains).length === 0) return;
 
     const numberOfPreviouslyActiveTrains = Object.keys(lastHistoryEntries).length;
+
     const updatedActiveTrains: Record<string, ActiveTrainHistoryStatus> = {};
     const disappearedTrains: {
         trn: string,
@@ -456,46 +470,50 @@ async function onNewTrainsHistory(payload: FullNewTrainsHistoryPayload) {
         trn: string,
         curr: Omit<ActiveTrainHistoryEntry, "active">,
     }[] = [];
-    for (const [trn, trainData] of Object.entries(payload.trains)) {
-        const historyEntry = {date: payload.date, ...trainData} as TrainHistoryEntry;
-        if (historyEntry.active) {
-            const activeHistoryStatus = historyEntry.status;
-            await checkActiveTrain({
-                trn,
-                curr: historyEntry,
-                prev: lastHistoryEntries[trn]
-            });
-            lastHistoryEntries[trn] = {
-                date: payload.date,
-                status: activeHistoryStatus
-            };
-            trainsWithHistory.add(trn);
-            updatedActiveTrains[trn] = activeHistoryStatus;
-            if (missingTrains.has(trn)) {
-                missingTrains.delete(trn);
-                reappearedTrains.push({ trn, curr: historyEntry });
+    await Promise.all(
+        Object.entries(payload.trains).map(async ([trn, trainData]) => {
+            const historyEntry = {date: payload.date, ...trainData} as TrainHistoryEntry;
+            if (historyEntry.active) {
+                const activeHistoryStatus = historyEntry.status;
+                await checkActiveTrain({
+                    trn,
+                    curr: historyEntry,
+                    prev: lastHistoryEntries[trn]
+                });
+                lastHistoryEntries[trn] = {
+                    date: payload.date,
+                    status: activeHistoryStatus
+                };
+                trainsWithHistory.add(trn);
+                updatedActiveTrains[trn] = activeHistoryStatus;
+                if (missingTrains.has(trn)) {
+                    reappearedTrains.push({ trn, curr: historyEntry });
+                }
+            } else {
+                let prev = lastHistoryEntries[trn];
+                if (!prev) {
+                    // This can occur if the bot was restarted between the previous entry and it going missing
+                    const response = await proxy.getTrainHistory(trn, {
+                        time: { to: payload.date },
+                        limit: 1,
+                        active: true,
+                        props: ["extract"],
+                    }) as { extract: [ActiveTrainHistoryEntry] };
+                    prev = response.extract[0];
+                }
+                disappearedTrains.push({ trn, prev });
+                delete lastHistoryEntries[trn];
             }
-        } else {
-            let prev = lastHistoryEntries[trn];
-            if (!prev) {
-                // This can occur if the bot was restarted between the previous entry and it going missing
-                const response = await proxy.getTrainHistory(trn, {
-                    time: { to: payload.date },
-                    limit: 1,
-                    active: true,
-                    props: ["extract"],
-                }) as { extract: [ActiveTrainHistoryEntry] };
-                prev = response.extract[0];
-            }
-            disappearedTrains.push({ trn, prev });
-            delete lastHistoryEntries[trn];
-        }
-    }
+        })
+    );
 
+    const promises: Promise<void>[] = [];
     if (disappearedTrains.length >= MULTIPLE_TRAINS_THRESHOLD) {
-        await handleMultipleDisappearedTrains(
-            new Set(disappearedTrains.map(({ trn }) => trn)),
-            disappearedTrains.length === numberOfPreviouslyActiveTrains
+        promises.push(
+            handleMultipleDisappearedTrains(
+                new Set(disappearedTrains.map(({ trn }) => trn)),
+                disappearedTrains.length === numberOfPreviouslyActiveTrains
+            )
         );
     } else {
         for (const train of disappearedTrains) {
@@ -508,12 +526,14 @@ async function onNewTrainsHistory(payload: FullNewTrainsHistoryPayload) {
                 });
                 continue;
             }
-            await handleDisappearedTrain(train.trn, train.prev);
+            promises.push(handleDisappearedTrain(train.trn, train.prev));
         }
     }
     if (reappearedTrains.length >= MULTIPLE_TRAINS_THRESHOLD) {
-        await announceMultipleReappearedTrains(
-            new Set(reappearedTrains.map(({ trn }) => trn))
+        promises.push(
+            announceMultipleReappearedTrains(
+                new Set(reappearedTrains.map(({ trn }) => trn))
+            )
         );
     } else {
         for (const { trn, curr } of reappearedTrains) {
@@ -522,29 +542,44 @@ async function onNewTrainsHistory(payload: FullNewTrainsHistoryPayload) {
                 // Its disappearance hadn't been announced yet, so don't announce its reappearance
                 continue;
             }
-            await announceReappearedTrain({
-                trn,
-                timetable: (await getTodaysTimetable()).trains[trn],
-                ...curr
-            });
+            promises.push(getTodaysTimetable().then(dayTimetable =>
+                announceReappearedTrain({ trn, timetable: dayTimetable.trains[trn], ...curr })
+            ));
         }
     }
     for (const { trn } of reappearedTrains) {
+        // This needs to be done after the announcements, so the missingEntry can be checked
         missingTrains.delete(trn);
     }
-    await checkMissingTrains();
+    promises.push(checkMissingTrains());
 
     const numberOfCurrentlyActiveTrains = Object.keys(lastHistoryEntries).length;
     if (numberOfCurrentlyActiveTrains !== numberOfPreviouslyActiveTrains) {
-        await updateActivity(numberOfCurrentlyActiveTrains);
+        promises.push(updateActivity(numberOfCurrentlyActiveTrains));
     }
 
-    // All the announcements for this heartbeat have been made, so the cached embed data is no longer needed
-    embedDataCache = {};
+    await Promise.all(promises);
 }
 
 const ongoingErrors = new Set<string>();
 const lastErrors = new Set<string>();
+
+function shouldAnnounceError(error: HeartbeatErrorPayload) {
+    if (ongoingErrors.has(error.message)) return false;
+    if (error.api !== "timesAPI") return true;
+    if (error.message === "Unexpected token '<', \"<!DOCTYPE \"... is not valid JSON") {
+        // This is usually a Cloudflare "Timed out" error page.
+        // This happens relatively often, so just ignore it.
+        return false;
+    }
+    if (error.message === "Unexpected end of JSON input") {
+        const time = secondsSinceMidnight(error.date);
+        if (time >= TIMES_API_RESTART_TIME.from && time <= TIMES_API_RESTART_TIME.to) {
+            return false;
+        }
+    }
+    return true;
+}
 
 export async function startMonitoring() {
     await refreshCache(proxy);
@@ -563,8 +598,10 @@ export async function startMonitoring() {
     }
     proxy.streamHistory({
         async onNewTrainHistoryEntries(payload: FullNewTrainsHistoryPayload) {
-            await setConnected();
-            await onNewTrainsHistory(payload);
+            await Promise.all([
+                setConnected(),
+                onNewTrainsHistory(payload)
+            ]);
             for (const error of ongoingErrors) {
                 if (!lastErrors.has(error)) {
                     ongoingErrors.delete(error);
@@ -573,26 +610,19 @@ export async function startMonitoring() {
             lastErrors.clear();
         },
         async onHeartbeatError(payload) {
-            await setConnected();
-            if (payload.api === "timesAPI") {
-                if (payload.message === "Unexpected end of JSON input") {
-                    const time = secondsSinceMidnight(payload.date);
-                    if (time >= TIMES_API_RESTART_TIME.from && time <= TIMES_API_RESTART_TIME.to) return;
-                } else if (payload.message === "Unexpected token '<', \"<!DOCTYPE \"... is not valid JSON") {
-                    // This is usually a Cloudflare "Timed out" error page.
-                    // This happens relatively often, so just ignore it.
-                    return;
-                }
-            }
+            const promises: Promise<void>[] = [setConnected()];
             lastErrors.add(payload.message);
-            if (!ongoingErrors.has(payload.message)) {
+            if (shouldAnnounceError(payload)) {
                 ongoingErrors.add(payload.message)
-                await announceHeartbeatError(payload);
+                promises.push(announceHeartbeatError(payload));
             }
+            await Promise.all(promises);
         },
         async onHeartbeatWarnings(payload) {
-            await setConnected();
-            await announceHeartbeatWarnings(payload);
+            await Promise.all([
+                setConnected(),
+                announceHeartbeatWarnings(payload)
+            ]);
         },
         onConnect() {
             // This gets called if any response is received, even if it's an error page,

@@ -76,7 +76,7 @@ export default {
         }
 
         if (trainTimetable) {
-            const timetabledStatus = getExpectedTrainState(trainTimetable, secondsSinceMidnight(new Date()));
+            const timetabledStatus = getExpectedTrainState(trainTimetable, secondsSinceMidnight(date));
             lines.push(`It should ${renderExpectedTrainState(timetabledStatus, true)}.`);
         } else {
             lines.push("This train was not timetabled to run on that day.");

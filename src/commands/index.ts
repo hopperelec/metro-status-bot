@@ -11,7 +11,7 @@ import statusHistoryCommand from "./status-history-command";
 import listActiveCommand from "./list-active-command";
 import timetableCommand from "./timetable-command";
 import dueTimesCommand from "./due-times-command";
-import trainStatusAtTimeCommand from "./train-status-at-time-command";
+import trainStatusAtTimeCommand from "./status-at-time-command";
 
 export type MSBCommand = {
     DEFINITION: ApplicationCommandData,

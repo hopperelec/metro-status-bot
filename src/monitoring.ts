@@ -520,6 +520,14 @@ async function onNewTrainsHistory(payload: FullNewTrainsHistoryPayload) {
         );
     } else {
         for (const { trn, curr } of reappearedTrains) {
+            const missingEntry = missingTrains.get(trn);
+            if (missingEntry) {
+                missingTrains.delete(trn);
+                if (!missingEntry.announced) {
+                    // Its disappearance hadn't been announced yet, so don't announce its reappearance
+                    continue;
+                }
+            }
             await announceReappearedTrain({trn, ...curr});
         }
     }

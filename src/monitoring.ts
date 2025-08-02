@@ -478,7 +478,18 @@ async function onNewTrainsHistory(payload: FullNewTrainsHistoryPayload) {
                 reappearedTrains.push({ trn, curr: activeHistoryEntry });
             }
         } else {
-            disappearedTrains.push({ trn, prev: lastHistoryEntries[trn] });
+            let prev = lastHistoryEntries[trn];
+            if (!prev) {
+                // This can occur if the bot was restarted between the previous entry and it going missing
+                const response = await proxy.getTrainHistory(trn, {
+                    time: { to: payload.date },
+                    limit: 1,
+                    active: true,
+                    props: ["extract"],
+                }) as { extract: [ActiveTrainHistoryEntry] };
+                prev = response.extract[0];
+            }
+            disappearedTrains.push({ trn, prev });
             delete lastHistoryEntries[trn];
         }
     }
@@ -489,29 +500,17 @@ async function onNewTrainsHistory(payload: FullNewTrainsHistoryPayload) {
             disappearedTrains.length === numberOfPreviouslyActiveTrains
         );
     } else {
-        for (const { trn } of disappearedTrains) {
-            let prev = lastHistoryEntries[trn];
-            if (!prev) {
-                // This can occur if the bot was restarted between the previous entry and it going missing
-                const response = await proxy.getTrainHistory(trn, {
-                    time: { to: payload.date },
-                    limit: 1,
-                    active: true,
-                    props: ["extract"],
-                }) as { extract: [ActiveTrainHistoryEntry] };
-                const { active, ...rest } = response.extract[0];
-                prev = rest;
-            }
-            if (isDepartedFGTtoShared(prev.status)) {
+        for (const train of disappearedTrains) {
+            if (isDepartedFGTtoShared(train.prev.status)) {
                 // See comment on `DEPARTED_FGT_TO_SHARED_DELAY` for explanation
-                missingTrains.set(trn, {
+                missingTrains.set(train.trn, {
                     announced: false,
-                    prevStatus: prev,
-                    whenToAnnounce: new Date(prev.date.getTime() + 1000 * 60 * DEPARTED_FGT_TO_SHARED_DELAY)
+                    prevStatus: train.prev,
+                    whenToAnnounce: new Date(train.prev.date.getTime() + 1000 * 60 * DEPARTED_FGT_TO_SHARED_DELAY)
                 });
                 continue;
             }
-            await handleDisappearedTrain(trn, prev);
+            await handleDisappearedTrain(train.trn, train.prev);
         }
     }
     if (reappearedTrains.length >= MULTIPLE_TRAINS_THRESHOLD) {

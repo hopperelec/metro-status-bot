@@ -3,7 +3,7 @@ import {apiConstants, lastHeartbeat} from "./cache";
 import {EmbedBuilder} from "discord.js";
 import {
     ActiveTrainHistoryStatus,
-    CollatedTrain, ExpectedTrainState,
+    CollatedTrain, ExpectedTrainState, HeartbeatErrorPayload, HeartbeatWarningsPayload,
     TimesApiData, TrainTimetable
 } from "metro-api-client";
 import {
@@ -11,12 +11,23 @@ import {
     calculateDelayFromTrainStatusesAPI,
     parseLocation
 } from "./timetable";
+import {alert} from "./bot";
 
 export type TrainEmbedData = {
     trn: string;
     status: CollatedTrain | ActiveTrainHistoryStatus;
     date: Date;
     timetable?: TrainTimetable;
+}
+
+export function dueInToString(dueIn: number) {
+    switch (dueIn) {
+        case -2: return "Delayed";
+        case -1: return "Arrived";
+        case 0: return "Due";
+        case 1: return "1 min";
+        default: return `${dueIn} mins`;
+    }
 }
 
 function renderSignedNumber(value: number) {
@@ -116,16 +127,12 @@ export function trainEmbed(train: TrainEmbedData) {
     return embed;
 }
 
-export function prevTrainStatusEmbed(train: TrainEmbedData) {
+function prevTrainStatusEmbed(train: TrainEmbedData) {
     if (train.status)
         return trainEmbed(train).setTitle(`T${train.trn} (previous status)`)
     return new EmbedBuilder()
         .setTitle(`T${train.trn} (previous status)`)
         .setDescription("No previous status available.");
-}
-
-export function listTrns(trns: Set<string>) {
-    return `T${Array.from(trns).sort().join(", T")}`;
 }
 
 export function renderPlatform(stationCode: string, platform?: number) {
@@ -183,4 +190,201 @@ export function renderExpectedTrainState(state: ExpectedTrainState, past: boolea
         case "DEPARTED_NIS_PAST":
             return `have departed empty from ${location} towards ${destination}`;
     }
+}
+
+// Heartbeats
+
+function getAPIName(code: string) {
+    if (code === "timesAPI") return "the times API";
+    if (code === "trainStatusesAPI") return "the train statuses API";
+    if (code === "gateway") return "the gateway (a prerequisite of the train statuses";
+    return `an unrecognised API (${code})`;
+}
+
+export async function announceHeartbeatError(payload: HeartbeatErrorPayload) {
+    await alert({
+        content: `⚠️ An error occurred while fetching or parsing data from ${getAPIName(payload.api)}:\n` +
+            `> ${payload.message}\n` +
+            "-# This usually indicates a problem with or downtime of Nexus' APIs; the bot and proxy are still working fine.",
+    });
+}
+
+export async function announceHeartbeatWarnings(payload: HeartbeatWarningsPayload) {
+    const apiName = getAPIName(payload.api);
+    await alert({
+        content: `⚠️ One or more warnings were produced while parsing data from ${apiName}.\n` +
+            "-# This usually indicates strange or unexpected behaviour from Nexus' APIs; the bot and proxy are still working fine.",
+        files: [
+            {
+                name: "warnings.txt",
+                description: `Warnings from ${apiName}`,
+                attachment: Buffer.from(JSON.stringify(payload.warnings, null, 2))
+            }
+        ]
+    });
+}
+
+// Either API
+
+function listTrns(trns: Set<string>) {
+    return `T${Array.from(trns).sort().join(", T")}`;
+}
+
+export async function announceTrainOnWrongDay(train: TrainEmbedData) {
+    await alert({
+        content: `🤔 Train T${train.trn} is active, but it isn't timetabled for today.`,
+        embeds: [trainEmbed(train)]
+    });
+}
+
+export async function announceTrainOnWrongDayDisappeared(train: TrainEmbedData) {
+    await alert({
+        content: `🤔 Train T${train.trn} was active despite not being timetabled for today. However, it has now disappeared. Below is it's status from before it disappeared.`,
+        embeds: [trainEmbed(train)]
+    });
+}
+
+export async function announceTrainDuringNightHours(train: TrainEmbedData) {
+    await alert({
+        content: `🌙 Train T${train.trn} is active during night hours.`,
+        embeds: [trainEmbed(train)]
+    });
+}
+
+export async function announceECS(train: TrainEmbedData) {
+    await alert({
+        content: `🧐 Train T${train.trn} is showing on the Pop app. While this TRN is timetabled for today, it is not meant to be in service, so the Pop app doesn't usually show it.`,
+        embeds: [trainEmbed(train)]
+    });
+}
+
+export async function announceUnrecognisedDestinations(
+    currStatus: TrainEmbedData,
+    prevStatus: TrainEmbedData,
+    unrecognisedDestinations: string[]
+) {
+    let message: string;
+    if (unrecognisedDestinations.length === 1) {
+        const destination = unrecognisedDestinations[0];
+        const lowerDestination = destination.toLowerCase();
+        if (["terminates", "not in service"].includes(lowerDestination)) {
+            message = `is showing as "${destination}" on the Pop app.`;
+        } else if (lowerDestination === "gosforth depot") {
+            message = `is heading to ${destination} but is showing on the Pop app.`;
+        } else if (destination === "") {
+            message = 'is showing a blank destination on the Pop app. This often happens when it is actually heading to Bede.';
+        } else if (lowerDestination === "blank") {
+            message = `is showing the literal text "${destination}" as its destination on the Pop app. As opposed to an actually blank destination, this does not seem to indicate it is heading to Bede. I am not sure what it means.`;
+        } else {
+            message = `has a new unrecognised current and/or planned destination "${destination}"`;
+        }
+    } else {
+        for (const [i, destination] of unrecognisedDestinations.entries()) {
+            if (destination === "") {
+                unrecognisedDestinations[i] = `*[BLANK]* (often happens when it is actually heading to Bede)`;
+            } else {
+                unrecognisedDestinations[i] = `"${destination}"`;
+            }
+        }
+        message = `has ${unrecognisedDestinations.length} new unrecognised destinations: ${unrecognisedDestinations.join(", ")}`;
+    }
+    await alert({
+        content: `🤔 Train T${currStatus.trn} ${message}`,
+        embeds: [trainEmbed(currStatus), prevTrainStatusEmbed(prevStatus)]
+    });
+}
+
+export async function announceTrainAtUnrecognisedStation(
+    currStatus: TrainEmbedData,
+    prevStatus: TrainEmbedData,
+    station: string,
+) {
+    const middle = station === "" ? "a blank station" : `an unrecognised station "${station}"`;
+    await alert({
+        content: `🤔 Train T${currStatus.trn} was last seen at ${middle}`,
+        embeds: [trainEmbed(currStatus), prevTrainStatusEmbed(prevStatus)]
+    });
+}
+
+export async function announceTrainAtUnrecognisedPlatform(train: TrainEmbedData) {
+    await alert({
+        content: `🤔 Train T${train.trn} is at an unrecognised platform`,
+        embeds: [trainEmbed(train)]
+    });
+}
+
+export async function announceTrainAtStJamesP2(train: TrainEmbedData) {
+    await alert({
+        content: `🤔 Train T${train.trn} is at St James platform 2. ` +
+            'This usually means either:\n' +
+            '- it is ending service\n' +
+            '- there is a Not In Service train on platform 1.\n' +
+            '- there is ongoing maintenance work on platform 1.',
+        embeds: [trainEmbed(train)]
+    });
+}
+
+export async function announceTrainsAtBothPlatformsStJames(
+    train1: TrainEmbedData,
+    train2: TrainEmbedData
+) {
+    await alert({
+        content: `🤔 Both platforms at St James are being used simultaneously, by trains T${train1.trn} and T${train2.trn}. ` +
+            'This usually means one of them is not in service.',
+        embeds: [trainEmbed(train1), trainEmbed(train2)]
+    });
+}
+
+export async function announceTrainAtSouthShieldsP1(train: TrainEmbedData) {
+    await alert({
+        content: `🤔 Train T${train.trn} is at South Shields platform 1.`,
+        embeds: [trainEmbed(train)]
+    });
+}
+
+export async function announceAllTrainsDisappeared() {
+    await alert({content: `❌ All trains have disappeared!`});
+}
+
+export async function announceMultipleDisappearedTrains(trns: Set<string>) {
+    await alert(`❌ The following ${trns.size} trains have disappeared simultaneously!\n${listTrns(trns)}`);
+}
+
+export async function announceDisappearedTrain(prevStatus: TrainEmbedData) {
+    await alert({
+        content: `❌ Train T${prevStatus.trn} has disappeared!`,
+        embeds: [prevTrainStatusEmbed(prevStatus)]
+    });
+}
+
+export async function announceReappearedTrain(train: TrainEmbedData) {
+    await alert({
+        content: `✅ Train T${train.trn} has reappeared!`,
+        embeds: [trainEmbed(train)]
+    });
+}
+
+export async function announceMultipleReappearedTrains(trns: Set<string>) {
+    await alert(`✅ The following ${trns.size} trains have reappeared simultaneously!\n${listTrns(trns)}`);
+}
+
+// Train statuses API
+
+export async function announceUnparseableLastSeen(currStatus: TrainEmbedData) {
+    await alert({
+        content: `⚠️ Not able to parse the last seen message (from the train statuses API) for train T${currStatus.trn}.`,
+        embeds: [trainEmbed(currStatus)]
+    });
+}
+
+// Times API
+
+export async function announceUnparseableLastEventLocation(
+    currStatus: TrainEmbedData,
+    prevStatus: TrainEmbedData,
+) {
+    await alert({
+        content: `⚠️ Not able to parse the last event location (from the times API) for train T${currStatus.trn}.`,
+        embeds: [trainEmbed(currStatus), prevTrainStatusEmbed(prevStatus)]
+    });
 }

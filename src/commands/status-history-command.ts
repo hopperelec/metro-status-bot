@@ -1,10 +1,4 @@
-import {
-    ActionRowBuilder,
-    AutocompleteFocusedOption,
-    BaseMessageOptionsWithPoll,
-    ButtonBuilder, ButtonInteraction, ButtonStyle,
-    CommandInteraction
-} from "discord.js";
+import {ActionRowBuilder, BaseMessageOptionsWithPoll, ButtonBuilder, ButtonStyle} from "discord.js";
 import {apiConstants, getTodaysTimetable, trainsWithHistory} from "../cache";
 import {HISTORY_PAGE_ROWS} from "../constants";
 import {proxy} from "../bot";
@@ -17,8 +11,9 @@ import {
     TrainTimetable
 } from "metro-api-client";
 import {renderPlatform, renderTimesAPILastEvent, renderTrainStatusesAPILastSeen} from "../rendering";
-import {normalizeTRN} from "./index";
+import {MSBCommand} from "./index";
 import {isToday} from "../utils";
+import {normalizeTRN, parseDateOption, parseTimeOption, TRN_OPTION} from "./command-utils";
 
 interface RenderedEntry {
     date: Date;
@@ -48,7 +43,7 @@ function createPropertyChoice<OutputData>(choice: IterativePropertyChoice<Output
     return choice;
 }
 
-export const PROPERTY_CHOICES: Record<string, FetchPropertyChoice | IterativePropertyChoice<unknown>> = {
+const PROPERTY_CHOICES: Record<string, FetchPropertyChoice | IterativePropertyChoice<unknown>> = {
     active: {
         displayName: "Active?",
         async customFetch(trn, time) {
@@ -148,11 +143,7 @@ function formatDate(date: Date): string {
     });
 }
 
-function compareData(
-    historyProperty: IterativePropertyChoice<unknown>,
-    a: unknown,
-    b: unknown
-) {
+function compareData(historyProperty: IterativePropertyChoice<unknown>, a: unknown, b: unknown) {
     if (historyProperty.equals) {
         if (a === undefined) return b === undefined;
         if (b === undefined) return false;
@@ -384,110 +375,116 @@ async function getPage(
     }
 }
 
-function timeStringToDate(time: string) {
-    const now = new Date();
-    const date = new Date(now);
-    const [hours, minutes, seconds = 0] = time.split(':').map(Number);
-    date.setHours(hours, minutes, seconds);
-    if (date > now) {
-        date.setDate(date.getDate() - 1);
-    }
-    return date;
-}
+export default {
+    DEFINITION: {
+        name: 'train-status-history',
+        description: 'Get the recent activity of a train',
+        options: [
+            TRN_OPTION,
+            {
+                name: 'property',
+                description: 'Property to show the history of',
+                type: 3, // string
+                choices: Object.entries(PROPERTY_CHOICES)
+                    .map(([key, choice]) => ({ name: choice.displayName, value: key })),
+                required: true
+            },
+            {
+                name: 'start-date',
+                description: 'Start date to show history from, in YYYY-MM-DD format. Defaults to today/yesterday if time is set.',
+                type: 3, // string
+            },
+            {
+                name: 'start-time',
+                description: 'Start time to show history from, in HH:MM[:SS] format',
+                type: 3, // string
+            },
+            {
+                name: 'end-date',
+                description: 'End date to show history up to, in YYYY-MM-DD format. Defaults to today/yesterday if time is set.',
+                type: 3, // string
+            },
+            {
+                name: 'end-time',
+                description: 'End time to show history up to, in HH:MM[:SS] format',
+                type: 3, // string
+            }
+        ],
+        contexts: [0, 1, 2]
+    },
 
-export default async function command(interaction: CommandInteraction) {
-    const trn = normalizeTRN(interaction.options.get('trn').value as string);
-    if (trn.includes(':')) {
-        await interaction.reply({
-            content: "TRN cannot contain a colon.",
-            flags: ["Ephemeral"]
-        }).catch(console.error);
-        return;
-    }
-
-    const startDate = interaction.options.get('start-date')?.value as string;
-    const startTime = interaction.options.get('start-time')?.value as string;
-    const endDate = interaction.options.get('end-date')?.value as string;
-    const endTime = interaction.options.get('end-time')?.value as string;
-    let from: Date;
-    let to: Date;
-    if (startDate) {
-        from = startTime ? new Date(`${startDate}T${startTime}`) : new Date(startDate);
-        if (isNaN(from.getTime())) {
+    execute: async interaction => {
+        const trn = normalizeTRN(interaction.options.get('trn').value as string);
+        if (trn.includes(':')) {
             await interaction.reply({
-                content: "Invalid start date and/or time.",
+                content: "TRN cannot contain a colon.",
                 flags: ["Ephemeral"]
-            }).catch(console.error);
+            });
             return;
         }
-    } else if (startTime) {
-        from = timeStringToDate(startTime);
-        if (isNaN(from.getTime())) {
-            await interaction.reply({
-                content: "Invalid start time.",
-                flags: ["Ephemeral"]
-            }).catch(console.error);
-            return;
-        }
-        from.setMilliseconds(0);
-    }
-    if (endDate) {
-        if (endTime) {
-            to = new Date(`${endDate}T${endTime}`);
-        } else {
-            to = new Date(endDate);
-            to.setHours(23, 59, 59, 999);
-        }
-        if (isNaN(to.getTime())) {
-            await interaction.reply({
-                content: "Invalid end date and/or time.",
-                flags: ["Ephemeral"]
-            }).catch(console.error);
-            return;
-        }
-    } else if (endTime) {
-        to = timeStringToDate(endTime);
-        if (isNaN(to.getTime())) {
-            await interaction.reply({
-                content: "Invalid end time.",
-                flags: ["Ephemeral"]
-            }).catch(console.error);
-            return;
-        }
-        to.setMilliseconds(999);
-    }
-    const deferReply = interaction.deferReply().catch(console.error);
-    const page = await getPage(
-        trn,
-        interaction.options.get('property').value as string,
-        from || to ? `${from?.getTime() || ''}...${to?.getTime() || ''}` : undefined,
-    );
-    await deferReply;
-    await interaction.editReply(page);
-}
 
-export function autoCompleteOptions(focusedOption: AutocompleteFocusedOption) {
-    return Array.from(trainsWithHistory);
-}
+        const startDate = interaction.options.get('start-date')?.value as string;
+        const startTime = interaction.options.get('start-time')?.value as string;
+        const endDate = interaction.options.get('end-date')?.value as string;
+        const endTime = interaction.options.get('end-time')?.value as string;
+        let from: Date;
+        let to: Date;
+        try {
+            if (startDate || startTime) {
+                from = startDate ? parseDateOption(startDate) : new Date();
+                if (startTime) {
+                    const hms = parseTimeOption(startTime);
+                    from.setHours(hms.hours, hms.minutes, hms.seconds, 0);
+                } else {
+                    from.setHours(0, 0, 0, 0);
+                }
+            }
+            if (endDate || endTime) {
+                to = endDate ? parseDateOption(endDate) : new Date();
+                if (endTime) {
+                    const hms = parseTimeOption(endTime);
+                    to.setHours(hms.hours, hms.minutes, hms.seconds, 0);
+                } else {
+                    to.setHours(23, 59, 59, 999);
+                }
+            }
+        } catch (error) {
+            await interaction.reply({
+                content: error.message,
+                flags: ["Ephemeral"]
+            });
+            return;
+        }
 
-export async function button(interaction: ButtonInteraction, rest: string[]) {
-    const [trn, property, ...extra] = rest;
-    if (interaction.user === interaction.message.interactionMetadata.user) {
-        const update = interaction.update({
-            content: `Loading...`,
-            components: []
-        }).catch(console.error);
-        const page = await getPage(trn, property, extra.join(':'));
-        await update;
+        const deferReply = interaction.deferReply();
+        const page = await getPage(
+            trn,
+            interaction.options.get('property').value as string,
+            from || to ? `${from?.getTime() || ''}...${to?.getTime() || ''}` : undefined,
+        );
+        await deferReply;
         await interaction.editReply(page);
-    } else {
-        const pagePromise = getPage(trn, property, extra.join(':'));
-        await interaction.reply({
-            content: `Loading...`,
-            flags: ["Ephemeral"],
-        })
-            .then(async reply => await reply.edit(await pagePromise))
-            .catch(console.error)
+    },
 
+    autoCompleteOptions: async () => Array.from(trainsWithHistory),
+
+    button: async (interaction, rest) => {
+        const [trn, property, ...extra] = rest;
+        if (interaction.user === interaction.message.interactionMetadata.user) {
+            const update = interaction.update({
+                content: `Loading...`,
+                components: []
+            });
+            const page = await getPage(trn, property, extra.join(':'));
+            await update;
+            await interaction.editReply(page);
+        } else {
+            const pagePromise = getPage(trn, property, extra.join(':'));
+            const reply = await interaction.reply({
+                content: `Loading...`,
+                flags: ["Ephemeral"],
+            });
+            await reply.edit(await pagePromise)
+        }
     }
-}
+} as MSBCommand;

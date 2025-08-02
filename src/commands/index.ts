@@ -1,251 +1,97 @@
 import {
+    ApplicationCommandData,
+    AutocompleteFocusedOption,
+    ButtonInteraction,
     Client,
+    CommandInteraction,
     Interaction
 } from "discord.js";
-import currentStatusCommand, {autoCompleteOptions as currentStatusAutoComplete} from "./current-status-command";
-import statusHistoryCommand, {
-    autoCompleteOptions as statusHistoryAutoComplete,
-    button as historyButtons
-} from "./status-history-command";
+import currentStatusCommand from "./current-status-command";
+import statusHistoryCommand from "./status-history-command";
 import listActiveCommand from "./list-active-command";
-import timetableCommand, {autoCompleteOptions as timetableAutoComplete} from "./timetable-command";
-import {PROPERTY_CHOICES as HISTORY_PROPERTY_CHOICES} from "./status-history-command";
-import dueTimesCommand, {
-    autoCompleteOptions as dueTimesAutoComplete,
-    button as dueTimesButtons
-} from "./due-times-command";
+import timetableCommand from "./timetable-command";
+import dueTimesCommand from "./due-times-command";
 import trainStatusAtTimeCommand from "./train-status-at-time-command";
 
-export async function registerCommands(client: Client) {
-    const TRN_OPTION = {
-        name: 'trn',
-        description: "Train Running Number",
-        required: true,
-        type: 3, // string
-        autocomplete: true,
-    }
-    await client.application.commands.set([
-        {
-            name: 'current-train-status',
-            description: 'Get the current status of a train',
-            options: [TRN_OPTION],
-            contexts: [0, 1, 2]
-        },
-        {
-            name: 'train-status-history',
-            description: 'Get the recent activity of a train',
-            options: [
-                TRN_OPTION,
-                {
-                    name: 'property',
-                    description: 'Property to show the history of',
-                    type: 3, // string
-                    choices: Object.entries(HISTORY_PROPERTY_CHOICES)
-                        .map(([key, choice]) => ({ name: choice.displayName, value: key })),
-                    required: true
-                },
-                {
-                    name: 'start-date',
-                    description: 'Start date to show history from, in YYYY-MM-DD format. Defaults to today/yesterday if time is set.',
-                    type: 3, // string
-                },
-                {
-                    name: 'start-time',
-                    description: 'Start time to show history from, in HH:MM[:SS] format',
-                    type: 3, // string
-                },
-                {
-                    name: 'end-date',
-                    description: 'End date to show history up to, in YYYY-MM-DD format. Defaults to today/yesterday if time is set.',
-                    type: 3, // string
-                },
-                {
-                    name: 'end-time',
-                    description: 'End time to show history up to, in HH:MM[:SS] format',
-                    type: 3, // string
-                }
-            ],
-            contexts: [0, 1, 2]
-        },
-        {
-            name: 'train-status-at-time',
-            description: 'Get the full status of a train at a specific time',
-            options: [
-                TRN_OPTION,
-                {
-                    name: 'time',
-                    description: 'Time to get the status for, in HH:MM[:SS] format. Defaults to now.',
-                    type: 3, // string
-                },
-                {
-                    name: 'date',
-                    description: 'Date to get the status for, in YYYY-MM-DD format. Defaults to today.',
-                    type: 3, // string
-                    required: false,
-                },
-                {
-                    name: 'after',
-                    description: 'Show status at or just after the specified time (as opposed to default of at or just before).',
-                    type: 5, // boolean
-                    required: false,
-                }
-            ],
-            contexts: [0, 1, 2]
-        },
-        {
-            name: 'list-active-trains',
-            description: 'Get a list of active trains, and how many timetabled trains are missing',
-            contexts: [0, 1, 2]
-        },
-        {
-            name: 'train-timetable',
-            description: 'Get the timetable for a train',
-            options: [
-                {
-                    name: 'trns',
-                    description: 'One or more Train Running Numbers (TRNs) to get the timetable for, separated by commas.',
-                    type: 3, // string
-                    autocomplete: true,
-                },
-                {
-                    name: 'locations',
-                    description: 'One or more locations to filter by, separated by commas. Example: DEP,MMT,HOW_2',
-                    type: 3, // string
-                    autocomplete: true,
-                },
-                {
-                    name: 'destinations',
-                    description: 'One or more destinations to filter by, separated by commas. Example: DEP,MMT,HOW_2',
-                    type: 3, // string
-                    autocomplete: true,
-                },
-                {
-                    name: 'in-service',
-                    description: 'Filter by whether entries are in service. Defaults to ignoring whether entries are in service.',
-                    type: 5, // boolean
-                },
-                {
-                    name: 'only-termini',
-                    description: 'Whether to only show when and where the train is terminating. Defaults to false.',
-                    type: 5, // boolean
-                },
-                {
-                    name: 'types',
-                    description: 'One or more types to filter by. 1 - Depot start, 2 - Passenger stop, 3 - ECS or skips, 4 - Depot end',
-                    type: 3, // string
-                    autocomplete: true,
-                },
-                {
-                    name: 'start-time',
-                    description: 'Start time, in HH:MM[:SS] format. Defaults to start of service.',
-                    type: 3, // string
-                },
-                {
-                    name: 'end-time',
-                    description: 'End time, in HH:MM[:SS] format. Defaults to end of service.',
-                    type: 3, // string
-                },
-                {
-                    name: 'date',
-                    description: 'Date, in YYYY-MM-DD format. Defaults to today.',
-                    type: 3, // string
-                },
-                {
-                    name: 'limit',
-                    description: 'Maximum number of entries to list. Applied in reverse if `end-time` is set but not `start-time`',
-                    type: 4, // integer
-                    minValue: 1,
-                }
-            ],
-            contexts: [0, 1, 2]
-        },
-        {
-            name: 'due-times',
-            description: 'Get the next trains due at a station (or a specific platform)',
-            options: [
-                {
-                    name: 'station',
-                    description: 'Station code',
-                    type: 3, // string
-                    required: true,
-                    autocomplete: true,
-                },
-                {
-                    name: 'platform',
-                    description: 'Platform number',
-                    type: 4, // integer
-                    minValue: 1,
-                    maxValue: 4,
-                }
-            ],
-            contexts: [0, 1, 2]
+export type MSBCommand = {
+    DEFINITION: ApplicationCommandData,
+    execute: (interaction: CommandInteraction) => Promise<void>,
+    button?: (interaction: ButtonInteraction, args: string[]) => Promise<void>,
+    autoCompleteOptions?: (focusedOption: {name: string, value: string}) => Promise<string[]>
+}
+
+const COMMANDS = [
+    currentStatusCommand,
+    statusHistoryCommand,
+    listActiveCommand,
+    timetableCommand,
+    dueTimesCommand,
+    trainStatusAtTimeCommand,
+].reduce((acc, command) => {
+    acc[command.DEFINITION.name] = command;
+    return acc;
+}, {} as Record<string, MSBCommand>);
+
+async function getAutocompleteOptions(commandName: string, focusedOption: AutocompleteFocusedOption) {
+    const command = COMMANDS[commandName];
+    if (command) {
+        if (command.autoCompleteOptions) {
+            return command.autoCompleteOptions(focusedOption);
         }
-    ]);
+        console.error(`Command ${commandName} does not support autocomplete`);
+    } else {
+        console.error(`No command found for autocomplete option: ${focusedOption.name}`);
+    }
+    return [];
+}
+
+export async function registerCommands(client: Client) {
+    await client.application.commands.set(Object.values(COMMANDS).map(command => command.DEFINITION));
 }
 
 export async function handleInteraction(interaction: Interaction) {
     if (interaction.isCommand()) {
-        if (interaction.commandName === 'current-train-status') {
-            await currentStatusCommand(interaction);
-        } else if (interaction.commandName === 'train-status-history') {
-            await statusHistoryCommand(interaction);
-        } else if (interaction.commandName === 'list-active-trains') {
-            await listActiveCommand(interaction);
-        } else if (interaction.commandName === 'train-timetable') {
-            await timetableCommand(interaction);
-        } else if (interaction.commandName === 'due-times') {
-            await dueTimesCommand(interaction);
-        } else if (interaction.commandName === 'train-status-at-time') {
-            await trainStatusAtTimeCommand(interaction);
+        const command = COMMANDS[interaction.commandName];
+        if (!command) {
+            console.error(`Unknown command: ${interaction.commandName}`);
+            return;
         }
+        await command.execute(interaction).catch(async error => {
+            console.error(`Error executing command ${interaction.commandName}:`, error);
+            await interaction.reply({
+                content: "An error occurred while processing your request. Please let the bot developer know.",
+                flags: ["Ephemeral"]
+            }).catch(console.error);
+        });
 
     } else if (interaction.isButton()) {
         const [action, ...rest] = interaction.customId.split(':');
+        let button: MSBCommand['button'];
         if (action === 'history') {
-            await historyButtons(interaction, rest);
+            button = statusHistoryCommand.button;
         } else if (action === 'due-times') {
-            await dueTimesButtons(interaction, rest);
-        } else {
-            console.error(`Unknown button clicked: ${interaction.customId}`);
+            button = dueTimesCommand.button;
         }
+        if (!button) {
+            console.error(`Unknown button clicked: ${interaction.customId}`);
+            return
+        }
+        await button(interaction, rest).catch(async error => {
+            console.error(`Error handling history button:`, error);
+            await interaction.reply({
+                content: "An error occurred while processing your request. Please let the bot developer know.",
+                flags: ["Ephemeral"]
+            }).catch(console.error);
+        });
 
     } else if (interaction.isAutocomplete()) {
         const focusedOption = interaction.options.getFocused(true);
-        let options: string[];
-        switch (interaction.commandName) {
-            case 'current-train-status':
-                options = currentStatusAutoComplete(focusedOption);
-                break;
-            case 'train-status-at-time':
-            case 'train-status-history':
-                options = statusHistoryAutoComplete(focusedOption);
-                break;
-            case 'train-timetable':
-                options = await timetableAutoComplete(focusedOption);
-                break;
-            case 'due-times':
-                options = await dueTimesAutoComplete(focusedOption);
-                break;
-        }
         const prompt = focusedOption.value.toLowerCase();
         await interaction.respond(
-            options
+            (await getAutocompleteOptions(interaction.commandName, focusedOption))
                 .filter(choice => choice.toLowerCase().includes(prompt))
                 .map(choice => ({name: choice, value: choice}))
                 .slice(0, 25)
         ).catch(console.error);
     }
-}
-
-const STATION_REGEX = new RegExp(/^([A-Z]{3})( - .+)?/i);
-export function parseStationOption(station: string) {
-    const match = station.match(STATION_REGEX);
-    return match?.[1];
-}
-
-const T1xx_REGEX = new RegExp(/^T1\d\d$/i);
-export function normalizeTRN(trn: string) {
-    trn = trn.trim();
-    // Remove the leading 'T' if included
-    return T1xx_REGEX.test(trn) ? trn.slice(1) : trn;
 }

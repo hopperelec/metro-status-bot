@@ -1,19 +1,14 @@
 import {
-    ActionRowBuilder,
-    AutocompleteFocusedOption, ButtonBuilder,
-    ButtonInteraction, ButtonStyle,
-    CommandInteraction,
-    EmbedBuilder, InteractionUpdateOptions
+    ActionRowBuilder, ButtonBuilder,
+    ButtonStyle, EmbedBuilder, InteractionUpdateOptions
 } from "discord.js";
-import {
-    DueTime,
-    PlatformNumber, TimesApiData, TrainTimetable
-} from "metro-api-client";
+import {DueTime, PlatformNumber, TimesApiData, TrainTimetable} from "metro-api-client";
 import {proxy} from "../bot";
-import {parseStationOption} from "./index";
+import {MSBCommand} from "./index";
 import {apiConstants, getTodaysTimetable} from "../cache";
 import {DUE_TIMES_PAGE_ROWS, MONUMENT_STATION_CODES} from "../constants";
-import {renderPlatform, renderTimesAPILastEvent, renderTrainStatusesAPILastSeen} from "../rendering";
+import {dueInToString, renderPlatform, renderTimesAPILastEvent, renderTrainStatusesAPILastSeen} from "../rendering";
+import {parseStationOption} from "./command-utils";
 
 const PROPS = [
     "lastChecked",
@@ -39,21 +34,6 @@ type BaseFilteredDueTime = {
     }
 }
 
-function dueInToString(dueIn: number): string {
-    switch (dueIn) {
-        case -2:
-            return "Delayed";
-        case -1:
-            return "Arrived";
-        case 0:
-            return "Due";
-        case 1:
-            return "1 min";
-        default:
-            return `${dueIn} mins`;
-    }
-}
-
 function summarizeTrain(time: DueTime, train: BaseFilteredDueTime['status'], trainTimetable: TrainTimetable) {
     const lines = [`**Predicted time:** ${time.actualPredictedTime.toLocaleTimeString('en-GB')}`];
     if (time.actualScheduledTime) {
@@ -74,7 +54,7 @@ function summarizeTrain(time: DueTime, train: BaseFilteredDueTime['status'], tra
     return lines.join('\n');
 }
 
-function getButtons(context: string, page: number, isLastPage: boolean) {
+function createButtons(context: string, page: number, isLastPage: boolean) {
     return [
         new ActionRowBuilder<ButtonBuilder>().addComponents(
             new ButtonBuilder()
@@ -103,9 +83,7 @@ function getButtons(context: string, page: number, isLastPage: boolean) {
     ]
 }
 
-async function getStationPage(
-    stationCode: string, page = "first"
-) {
+async function getStationPage(stationCode: string, page = "first") {
     const embedBuilder = new EmbedBuilder();
     let dueTimes: (BaseFilteredDueTime & { platform: number })[];
     try {
@@ -143,13 +121,11 @@ async function getStationPage(
     }
     return {
         embeds: [embedBuilder],
-        components: getButtons(stationCode, pageNum, dueTimes.length <= DUE_TIMES_PAGE_ROWS)
+        components: createButtons(stationCode, pageNum, dueTimes.length <= DUE_TIMES_PAGE_ROWS)
     };
 }
 
-async function getPlatformPage(
-    stationCode: string, platform: PlatformNumber, page = "first"
-) {
+async function getPlatformPage(stationCode: string, platform: PlatformNumber, page = "first") {
     const embedBuilder = new EmbedBuilder();
     let dueTimes: (BaseFilteredDueTime & { platform: PlatformNumber })[];
     try {
@@ -190,51 +166,72 @@ async function getPlatformPage(
     }
     return {
         embeds: [embedBuilder],
-        components: getButtons(`${stationCode}:${platform}`, pageNum, dueTimes.length <= DUE_TIMES_PAGE_ROWS)
+        components: createButtons(`${stationCode}:${platform}`, pageNum, dueTimes.length <= DUE_TIMES_PAGE_ROWS)
     };
 }
 
-export default async function command(interaction: CommandInteraction) {
-    const station = interaction.options.get('station', true).value as string;
-    let stationCode = parseStationOption(station);
-    if (!stationCode) {
-        await interaction.reply({
-            content: "Invalid station",
-            flags: ["Ephemeral"]
-        }).catch(console.error);
-        return;
-    }
-    const platform = interaction.options.get('platform')?.value as PlatformNumber;
-    await interaction.reply(
-        platform ? await getPlatformPage(stationCode, platform) : await getStationPage(stationCode)
-    ).catch(console.error);
-}
+export default {
+    DEFINITION: {
+        name: 'due-times',
+        description: 'Get the next trains due at a station (or a specific platform)',
+        options: [
+            {
+                name: 'station',
+                description: 'Station code',
+                type: 3, // string
+                required: true,
+                autocomplete: true,
+            },
+            {
+                name: 'platform',
+                description: 'Platform number',
+                type: 4, // integer
+                minValue: 1,
+                maxValue: 4,
+            }
+        ],
+        contexts: [0, 1, 2]
+    },
 
-export async function autoCompleteOptions(focusedOption: AutocompleteFocusedOption) {
-    return apiConstants.PASSENGER_STOPS
+    execute: async interaction => {
+        const stationCode = parseStationOption(interaction.options.get('station', true).value as string);
+        if (stationCode) {
+            const platform = interaction.options.get('platform')?.value as PlatformNumber;
+            await interaction.reply(
+                platform ? await getPlatformPage(stationCode, platform) : await getStationPage(stationCode)
+            );
+        } else {
+            await interaction.reply({
+                content: "Invalid station",
+                flags: ["Ephemeral"]
+            });
+        }
+    },
+
+    autoCompleteOptions: async () => apiConstants.PASSENGER_STOPS
         .filter((code) =>
             code !== "MTE" && // Alias for MTW
             code !== "MTN" && // Alias for MTS
             code !== "PJC"    // Not shown in times API
-        ).map(code => `${code} - ${apiConstants.LOCATION_ABBREVIATIONS[code]}`)
-}
+        ).map(code => `${code} - ${apiConstants.LOCATION_ABBREVIATIONS[code]}`),
 
-export async function button(interaction: ButtonInteraction, rest: string[]) {
-    let page: string | InteractionUpdateOptions;
-    if (rest.length === 3) {
-        page = await getPlatformPage(rest[0], +rest[1] as PlatformNumber, rest[2]);
-    } else if (rest.length === 2) {
-        page = await getStationPage(rest[0], rest[1]);
-    } else {
-        console.error(`Unknown button clicked: ${interaction.customId}`);
-        return;
+    button: async (interaction, rest) => {
+        let page: string | InteractionUpdateOptions;
+        if (rest.length === 3) {
+            page = await getPlatformPage(rest[0], +rest[1] as PlatformNumber, rest[2]);
+        } else if (rest.length === 2) {
+            page = await getStationPage(rest[0], rest[1]);
+        } else {
+            console.error(`Unknown button clicked: ${interaction.customId}`);
+            return;
+        }
+        if (interaction.user === interaction.message.interactionMetadata.user) {
+            await interaction.update(page);
+        } else {
+            await interaction.reply({
+                ...(typeof page === "object" ? page : { content: page }),
+                flags: ["Ephemeral"]
+            });
+        }
     }
-    if (interaction.user === interaction.message.interactionMetadata.user) {
-        await interaction.update(page).catch(console.error);
-    } else {
-        await interaction.reply({
-            ...(typeof page === "object" ? page : { content: page }),
-            flags: ["Ephemeral"]
-        }).catch(console.error);
-    }
-}
+} as MSBCommand;

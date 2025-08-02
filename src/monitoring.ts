@@ -1,15 +1,13 @@
-import {DEPARTED_FGT_TO_SHARED_DELAY, MULTIPLE_TRAINS_THRESHOLD} from "./constants";
+import {DEPARTED_FGT_TO_SHARED_DELAY, MULTIPLE_TRAINS_THRESHOLD, TIMES_API_RESTART_TIME} from "./constants";
 import {
     announceDisappearedTrain,
     announceReappearedTrain,
     announceTrainOnWrongDayDisappeared,
-    updateActivity,
     announceUnparseableLastSeen,
     announceTrainAtUnrecognisedStation,
     announceUnrecognisedDestinations,
     announceTrainOnWrongDay,
     announceTrainDuringNightHours,
-    proxy,
     announceHeartbeatError,
     announceHeartbeatWarnings,
     announceAllTrainsDisappeared,
@@ -19,7 +17,8 @@ import {
     announceTrainAtStJamesP2,
     announceTrainAtUnrecognisedPlatform,
     announceTrainAtSouthShieldsP1, announceECS, announceTrainsAtBothPlatformsStJames
-} from "./bot";
+} from "./rendering";
+import {proxy, updateActivity} from "./bot";
 import {
     apiConstants,
     getStationCode,
@@ -506,7 +505,7 @@ async function onNewTrainsHistory(payload: FullNewTrainsHistoryPayload) {
                 missingTrains.set(train.trn, {
                     announced: false,
                     prevStatus: train.prev,
-                    whenToAnnounce: new Date(train.prev.date.getTime() + 1000 * 60 * DEPARTED_FGT_TO_SHARED_DELAY)
+                    whenToAnnounce: new Date(train.prev.date.getTime() + DEPARTED_FGT_TO_SHARED_DELAY)
                 });
                 continue;
             }
@@ -571,12 +570,8 @@ export async function startMonitoring() {
             await setConnected();
             if (payload.api === "timesAPI") {
                 if (payload.message === "Unexpected end of JSON input") {
-                    if (payload.date.getHours() === 3 && payload.date.getMinutes() < 10) {
-                        // The times API seems to restart at 3AM,
-                        // and it can sometimes take several minutes
-                        // for it to come back online.
-                        return;
-                    }
+                    const time = secondsSinceMidnight(payload.date);
+                    if (time >= TIMES_API_RESTART_TIME.from && time <= TIMES_API_RESTART_TIME.to) return;
                 } else if (payload.message === "Unexpected token '<', \"<!DOCTYPE \"... is not valid JSON") {
                     // This is usually a Cloudflare "Timed out" error page.
                     // This happens relatively often, so just ignore it.

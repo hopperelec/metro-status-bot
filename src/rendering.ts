@@ -9,7 +9,6 @@ import {
 import {
     calculateDelayFromTimesAPI,
     calculateDelayFromTrainStatusesAPI,
-    locationsMatch,
     parseLocation
 } from "./timetable";
 

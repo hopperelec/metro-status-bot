@@ -18,7 +18,7 @@ import {
     announceUnparseableLastEventLocation,
     announceTrainAtStJamesP2,
     announceTrainAtUnrecognisedPlatform,
-    announceTrainAtSouthShieldsP1, announceECS
+    announceTrainAtSouthShieldsP1, announceECS, announceTrainsAtBothPlatformsStJames
 } from "./bot";
 import {
     apiConstants,
@@ -30,7 +30,7 @@ import {
 import {
     ActiveTrainHistoryEntry,
     ActiveTrainHistoryStatus,
-    CollatedTrain, FullNewTrainsHistoryPayload,
+    CollatedTrain, FullNewTrainsHistoryPayload, FullTrainsResponse,
     ParsedLastSeen, ParsedTimesAPILocation, parseLastSeen, parseTimesAPILocation, PlatformNumber, TimesApiData,
     TrainStatusesApiData, TrainTimetable
 } from "metro-api-client";
@@ -323,7 +323,28 @@ async function eitherAPIChecks(
             await announceTrainAtSouthShieldsP1(await getFullEmbedData(checkData));
         }
     } else if (platformCheck === "sjm-p2") {
-        await announceTrainAtStJamesP2(await getFullEmbedData(checkData));
+        const fullEmbedData = await getFullEmbedData(checkData);
+        // Check if there is a train at St James platform 1
+        const trains = await proxy.getTrains() as FullTrainsResponse;
+        const sjmP1Train = Object.entries(trains.trains).find(
+            ([_, train]) => {
+                if (train.status.timesAPI?.lastEvent.location === "St James Platform 1") return true;
+                const parsedLastSeen = parseLastSeen(train.status.trainStatusesAPI?.lastSeen);
+                return parsedLastSeen?.station === "SJM" && parsedLastSeen?.platform === 1;
+            }
+        );
+        if (sjmP1Train) {
+            await announceTrainsAtBothPlatformsStJames(
+                fullEmbedData,
+                {
+                    trn: sjmP1Train[0],
+                    date: sjmP1Train[1].lastChanged,
+                    status: sjmP1Train[1].status
+                }
+            );
+        } else {
+            await announceTrainAtStJamesP2(fullEmbedData);
+        }
     } else if (platformCheck === "unrecognised") {
         await announceTrainAtUnrecognisedPlatform(await getFullEmbedData(checkData));
     }

@@ -411,13 +411,6 @@ async function checkMissingTrains() {
     }
 }
 
-async function handleMultipleReappearedTrains(trns: Set<string>) {
-    for (const trn of trns) {
-        missingTrains.delete(trn);
-    }
-    await announceMultipleReappearedTrains(trns);
-}
-
 function isDepartedFGTtoShared(status: ActiveTrainHistoryStatus) {
     if (
         status.timesAPI?.lastEvent.location.startsWith("Fellgate Platform ") &&
@@ -513,21 +506,21 @@ async function onNewTrainsHistory(payload: FullNewTrainsHistoryPayload) {
         }
     }
     if (reappearedTrains.length >= MULTIPLE_TRAINS_THRESHOLD) {
-        await handleMultipleReappearedTrains(
+        await announceMultipleReappearedTrains(
             new Set(reappearedTrains.map(({ trn }) => trn))
         );
     } else {
         for (const { trn, curr } of reappearedTrains) {
             const missingEntry = missingTrains.get(trn);
-            if (missingEntry) {
-                missingTrains.delete(trn);
-                if (!missingEntry.announced) {
-                    // Its disappearance hadn't been announced yet, so don't announce its reappearance
-                    continue;
-                }
+            if (missingEntry && !missingEntry.announced) {
+                // Its disappearance hadn't been announced yet, so don't announce its reappearance
+                continue;
             }
             await announceReappearedTrain({trn, ...curr});
         }
+    }
+    for (const { trn } of reappearedTrains) {
+        missingTrains.delete(trn);
     }
     await checkMissingTrains();
 

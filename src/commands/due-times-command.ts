@@ -121,7 +121,7 @@ async function getStationPage(stationCode: string, page = "first") {
     }
     return {
         embeds: [embedBuilder],
-        components: createButtons(stationCode, pageNum, dueTimes.length <= DUE_TIMES_PAGE_ROWS)
+        components: createButtons(stationCode, pageNum, pageNum >= numPages),
     };
 }
 
@@ -166,7 +166,7 @@ async function getPlatformPage(stationCode: string, platform: PlatformNumber, pa
     }
     return {
         embeds: [embedBuilder],
-        components: createButtons(`${stationCode}:${platform}`, pageNum, dueTimes.length <= DUE_TIMES_PAGE_ROWS)
+        components: createButtons(`${stationCode}:${platform}`, pageNum, pageNum >= numPages),
     };
 }
 

@@ -581,6 +581,12 @@ function shouldAnnounceError(error: HeartbeatErrorPayload) {
     return true;
 }
 
+console.log(shouldAnnounceError({
+    api: "timesAPI",
+    message: "Unexpected end of JSON input",
+    date: new Date(),
+}));
+
 export async function startMonitoring() {
     await refreshCache(proxy);
     console.log("Connecting to stream...");

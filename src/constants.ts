@@ -12,8 +12,9 @@ export const DEPARTED_FGT_TO_SHARED_DELAY = 5 * 60 * 1000; // 5 minutes
 // During this time, the proxy will send "Unexpected end of JSON input" errors for the times API.
 // This defines the time window during which we should ignore those errors.
 export const TIMES_API_RESTART_TIME = {
-    from: 3 * 60 * 60 * 1000, // 3 AM
-    to: (3 * 60 + 10) * 60 * 1000, // 3:10 AM
+    // both in seconds since midnight
+    from: 3 * 60 * 60, // 3 AM
+    to: (3 * 60 + 10) * 60, // 3:10 AM
 }
 
 export const MONUMENT_STATION_CODES = ["MMT","MTS","MTW","MTN","MTE"];

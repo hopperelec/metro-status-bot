@@ -335,7 +335,8 @@ async function eitherAPIChecks(
                     const sjmP1Train = Object.entries(trains.trains).find(
                         ([_, train]) => {
                             if (train.status.timesAPI?.lastEvent.location === "St James Platform 1") return true;
-                            const parsedLastSeen = parseLastSeen(train.status.trainStatusesAPI?.lastSeen);
+                            if (!train.status.trainStatusesAPI) return false;
+                            const parsedLastSeen = parseLastSeen(train.status.trainStatusesAPI.lastSeen);
                             return parsedLastSeen?.station === "SJM" && parsedLastSeen?.platform === 1;
                         }
                     );

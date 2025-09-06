@@ -343,8 +343,8 @@ export async function announceTrainAtSunderlandP1orP4(train: TrainEmbedData, pla
     });
 }
 
-export async function announceAllTrainsDisappeared() {
-    await alert({content: `❌ All trains have disappeared!`});
+export async function announceAllTrainsDisappeared(trns: Set<string>) {
+    await alert({content: `❌ All ${trns.size} active trains have disappeared simultaneously!\n${listTrns(trns)}`});
 }
 
 export async function announceMultipleDisappearedTrains(trns: Set<string>) {

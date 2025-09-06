@@ -420,7 +420,7 @@ async function handleMultipleDisappearedTrains(trns: Set<string>, isAllTrains: b
         missingTrains.set(trn, { announced: true, whenToForget });
     }
     if (isAllTrains) {
-        await announceAllTrainsDisappeared();
+        await announceAllTrainsDisappeared(trns);
     } else {
         await announceMultipleDisappearedTrains(trns);
     }

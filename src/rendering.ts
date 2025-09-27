@@ -159,7 +159,10 @@ export function renderExpectedTrainState(state: ExpectedTrainState, past: boolea
     const location = renderLocation(state.location);
     const destination = renderLocation(state.destination);
     let formatKey: string = state.event;
-    if (formatKey === "APPROACHING" && location === destination) formatKey = "TERMINATING";
+    if (location === destination) {
+        if (formatKey === "APPROACHING") formatKey = "TERMINATING";
+        else if (formatKey === "ARRIVED") formatKey = "STORED";
+    }
     if (!state.inService) formatKey += "_NIS";
     if (past) formatKey += "_PAST";
     switch (formatKey) {
@@ -182,6 +185,13 @@ export function renderExpectedTrainState(state: ExpectedTrainState, past: boolea
         case "TERMINATED_PAST": return `have been terminated at ${location}, about to head to ${destination}`;
         case "TERMINATED_NIS": return `be terminated at ${location}, about to head empty to ${destination}`;
         case "TERMINATED_NIS_PAST": return `have been terminated at ${location}, about to head empty to ${destination}`;
+
+        case "STORED":
+        case "STORED_NIS":
+            return `be at ${location}`
+        case "STORED_PAST":
+        case "STORED_NIS_PAST":
+            return `have been at ${location}`
 
         case "DEPARTED":
         case "DEPARTED_PAST":

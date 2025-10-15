@@ -1,7 +1,7 @@
 import {apiConstants, compareTimes, getTodaysTimetable} from "../cache";
 import {DayTimetable, TrainTimetableEntry} from "metro-api-client";
 import {proxy} from "../bot";
-import {locationsMatch} from "../timetable";
+import {locationsMatch, parseLocation} from "../timetable";
 import {MSBCommand} from "./index";
 import {normalizeTRN, parseDateOption, parseTimeOption} from "./command-utils";
 
@@ -11,6 +11,14 @@ function formatTime(time: number | undefined) {
     const minutes = Math.floor((time % 3600) / 60);
     const seconds = time % 60;
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+}
+
+function renderLocationShort(location: string) {
+    const parsedLocation = parseLocation(location);
+    if (!parsedLocation) return location;
+    return parsedLocation.platform !== undefined
+        ? `${parsedLocation.station} P${parsedLocation.platform}`
+        : parsedLocation.station;
 }
 
 export default {
@@ -208,18 +216,24 @@ export default {
         }
 
         const rows: {
-            trn: string;
-            location: string;
+            columns: string[];
             rest: string;
             arrivalTime?: number;
             departureTime?: number;
         }[] = [];
         for (const entry of flattenedEntries) {
-            let location = entry.location;
-            if (!onlyTermini) {
-                location += ` towards ${entry.destination}`;
+            const columns = [];
+            if (!trns || trns.length > 1) {
+                columns.push(`T${entry.trn}`);
+                columns.push(' | ');
             }
-            let rest = `${formatTime(entry.arrivalTime)} / ${formatTime(entry.departureTime)}`;
+            columns.push(renderLocationShort(entry.location));
+            columns.push(
+                entry.location === entry.destination
+                    ? ''
+                    : ` -> ${renderLocationShort(entry.destination)}`
+            );
+            let rest = ` | ${formatTime(entry.arrivalTime)} / ${formatTime(entry.departureTime)}`;
             if (!types || types.size > 1) {
                 rest += ` | Type: ${entry.type}`;
             }
@@ -227,8 +241,7 @@ export default {
                 rest += ' | Not In Service';
             }
             rows.push({
-                trn: `T${entry.trn}`,
-                location,
+                columns,
                 rest,
                 arrivalTime: entry.arrivalTime,
                 departureTime: entry.departureTime
@@ -236,14 +249,18 @@ export default {
         }
         rows.sort((a, b) => compareTimes(a.departureTime || a.arrivalTime, b.arrivalTime || b.departureTime));
 
-        const longestTrnLength = Math.max(...rows.map(row => row.trn.length));
-        const longestLocationLength = Math.max(...rows.map(row => row.location.length));
+        const columnWidths: number[] = [];
+        for (const row of rows) {
+            for (let i = 0; i < row.columns.length; i++) {
+                columnWidths[i] = Math.max(columnWidths[i] || 0, row.columns[i].length);
+            }
+        }
         let codeblockContent = '';
         for (const row of rows) {
-            if (!trns || trns.length > 1) {
-                codeblockContent += `${row.trn.padEnd(longestTrnLength)} | `;
+            for (let i = 0; i < row.columns.length; i++) {
+                codeblockContent += row.columns[i].padEnd(columnWidths[i]);
             }
-            codeblockContent += `${row.location.padEnd(longestLocationLength)} | ${row.rest}\n`;
+            codeblockContent += row.rest + '\n';
         }
 
         const footer = `-# Based on ${dayTimetable.description}`;

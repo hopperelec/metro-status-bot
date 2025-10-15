@@ -176,7 +176,7 @@ export default {
                     (locations && !locations.some(loc => locationsMatch(entry.location, loc))) ||
                     (destinations && !destinations.some(dest => locationsMatch(entry.destination, dest))) ||
                     (inService !== undefined && entry.inService !== inService) ||
-                    (onlyTermini && entry.arrivalTime && entry.departureTime) ||
+                    (onlyTermini && entry.arrivalTime !== undefined && entry.departureTime !== undefined) ||
                     (types && !types.has(entry.type)) ||
                     (startTime !== undefined && compareTimes(entry.arrivalTime || entry.departureTime, startTime) < 0) ||
                     (endTime !== undefined && compareTimes(entry.departureTime || entry.arrivalTime, endTime) > 0)

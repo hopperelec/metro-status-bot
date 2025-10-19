@@ -1,6 +1,6 @@
 export const TRN_OPTION = {
     name: 'trn',
-    description: "Train Running Number",
+    description: "Train Running Number (e.g., T104, with or without the leading 'T')",
     required: true,
     type: 3, // string
     autocomplete: true,

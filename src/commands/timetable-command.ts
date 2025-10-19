@@ -24,7 +24,7 @@ function renderLocationShort(location: string) {
 export default {
     DEFINITION: {
         name: 'train-timetable',
-        description: 'Get the timetable for a train',
+        description: 'Search through entries in the timetables',
         options: [
             {
                 name: 'trns',
@@ -77,7 +77,7 @@ export default {
             },
             {
                 name: 'limit',
-                description: 'Maximum number of entries to list. Applied in reverse if `end-time` is set but not `start-time`',
+                description: 'Maximum entries to list per TRN. Applied in reverse if `end-time` is set but not `start-time`',
                 type: 4, // integer
                 minValue: 1,
             }

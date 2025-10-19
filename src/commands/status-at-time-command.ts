@@ -10,12 +10,12 @@ import statusHistoryCommand from "./status-history-command";
 export default {
     DEFINITION: {
         name: 'train-status-at-time',
-        description: 'Get the full status of a train at a specific time',
+        description: 'See the full realtime status of a train at a specific time in the past',
         options: [
             TRN_OPTION,
             {
                 name: 'time',
-                description: 'Time to get the status for, in HH:MM[:SS] format. Defaults to now.',
+                description: 'Time to get the status for, in HH:MM[:SS] format.',
                 type: 3, // string
                 required: true,
             },

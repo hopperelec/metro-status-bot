@@ -17,7 +17,7 @@ function listTrains(trains: string[]) {
 export default {
     DEFINITION: {
         name: 'list-active-trains',
-        description: 'Get a list of active trains, and how many timetabled trains are missing',
+        description: 'List all trains that are (or are meant to be) active right now',
         contexts: [0, 1, 2]
     },
 

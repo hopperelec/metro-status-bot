@@ -380,7 +380,7 @@ async function getPage(
 export default {
     DEFINITION: {
         name: 'train-status-history',
-        description: 'Get the recent activity of a train',
+        description: 'Explore historic realtime data for a specific train',
         options: [
             TRN_OPTION,
             {

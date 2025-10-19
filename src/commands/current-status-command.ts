@@ -9,7 +9,7 @@ import {normalizeTRN, TRN_OPTION} from "./command-utils";
 export default {
     DEFINITION: {
         name: 'current-train-status',
-        description: 'Get the current status of a train',
+        description: 'Shows the current realtime data, timetabled location and delay for a specific train',
         options: [TRN_OPTION],
         contexts: [0, 1, 2]
     },

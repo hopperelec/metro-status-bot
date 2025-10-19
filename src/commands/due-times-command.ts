@@ -173,7 +173,7 @@ async function getPlatformPage(stationCode: string, platform: PlatformNumber, pa
 export default {
     DEFINITION: {
         name: 'due-times',
-        description: 'Get the next trains due at a station (or a specific platform)',
+        description: 'See the next trains due at a station (or specific platform) according to the Times API',
         options: [
             {
                 name: 'station',

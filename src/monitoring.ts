@@ -341,13 +341,14 @@ async function eitherAPIChecks(
                         }
                     );
                     if (sjmP1Train) {
-                        announcements.push(fullEmbedData => announceTrainsAtBothPlatformsStJames(
-                            fullEmbedData,
+                        announcements.push(async fullEmbedData => announceTrainsAtBothPlatformsStJames(
                             {
                                 trn: sjmP1Train[0],
                                 date: sjmP1Train[1].lastChanged,
-                                status: sjmP1Train[1].status
-                            }
+                                status: sjmP1Train[1].status,
+                                timetable: (await getTodaysTimetable()).trains[sjmP1Train[0]],
+                            },
+                            fullEmbedData
                         ));
                     } else {
                         announcements.push(announceTrainAtStJamesP2);

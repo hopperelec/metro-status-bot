@@ -43,6 +43,8 @@ client.once(Events.ClientReady, async () => {
 
 client.on(Events.InteractionCreate, handleInteraction);
 
+client.on(Events.Error, console.error);
+
 export async function updateActivity(numActive: number) {
     client.user.setActivity(
         `${numActive} trains`,

@@ -101,7 +101,7 @@ async function getFullEmbedData({ trn, curr }: TrainCheckData): Promise<TrainEmb
     };
 }
 
-async function checkPlatform(
+function checkPlatform(
     stationName: string,
     platform: PlatformNumber,
     time: number
@@ -297,26 +297,23 @@ async function eitherAPIChecks(
 
     if (shouldCheckPlatform) {
         const platformNumber = timesAPILocation?.platform ?? parsedLastSeen?.platform;
-        checkPromises.push(
-            checkPlatform(
-                parsedLastSeen?.station ?? timesAPILocation.station,
-                platformNumber,
-                secondsSinceMidnight(checkData.curr.date)
-            ).then(async (platformCheck) => {
-                if (platformCheck === "sss-p1") {
-                    // For some reason, any trains at South Shields platform 2 after midnight appear at platform 1 on the API.
-                    // This is clearly a bug in the API because trains at platform 2 at midnight will seemingly teleport to platform 1 with the same arrival time.
-                    // So don't announce trains at South Shields platform 1 after midnight.
-                    if (curr.date.getHours() >= apiConstants.NEW_DAY_HOUR) {
-                        announcements.push(announceTrainAtSouthShieldsP1);
-                    }
-                } else if (platformCheck === 'sun-p14') {
-                    announcements.push(fullEmbedData => announceTrainAtSunderlandP1orP4(fullEmbedData, platformNumber as 1 | 4));
-                } else if (platformCheck === "unrecognised") {
-                    announcements.push(announceTrainAtUnrecognisedPlatform);
-                }
-            })
-        )
+        const platformCheck = checkPlatform(
+            parsedLastSeen?.station ?? timesAPILocation.station,
+            platformNumber,
+            secondsSinceMidnight(checkData.curr.date)
+        );
+        if (platformCheck === "sss-p1") {
+            // For some reason, any trains at South Shields platform 2 after midnight appear at platform 1 on the API.
+            // This is clearly a bug in the API because trains at platform 2 at midnight will seemingly teleport to platform 1 with the same arrival time.
+            // So don't announce trains at South Shields platform 1 after midnight.
+            if (curr.date.getHours() >= apiConstants.NEW_DAY_HOUR) {
+                announcements.push(announceTrainAtSouthShieldsP1);
+            }
+        } else if (platformCheck === 'sun-p14') {
+            announcements.push(fullEmbedData => announceTrainAtSunderlandP1orP4(fullEmbedData, platformNumber as 1 | 4));
+        } else if (platformCheck === "unrecognised") {
+            announcements.push(announceTrainAtUnrecognisedPlatform);
+        }
     }
 
     await Promise.all(checkPromises);

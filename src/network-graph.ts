@@ -61,10 +61,6 @@ const NETWORK_JSON = {
     MAN_1: [
         "BYK_1",
         "MAN_2",
-        // Following involve using the Manors curve, which there is a special case for
-        // "WJS_1",
-        // "WJS_2",
-        // "JES_1"
     ],
     MAN_2: [
         "MMT_4",
@@ -227,21 +223,13 @@ const NETWORK_JSON = {
     ],
     WJS_1: [
         "JES_1",
-        // Following involve using the Manors curve, which there is a special case for
-        // "MAN_1",
-        // "WJS_2"
     ],
     WJS_2: [
         "ILF_2",
-        // Following involve using the Manors curve, which there is a special case for
-        // "MAN_1",
-        // "WJS_1",
-        // "JES_1"
     ],
     JES_1: [
         "HAY_1",
         "WJS_1",
-        // "MAN_1",
         "WJS_2"
     ],
     JES_2: [
@@ -464,6 +452,13 @@ const NETWORK_JSON = {
     ]
 };
 
+const JJC_NETWORK: Record<string, Set<string>> = {
+    MAN_1: new Set(["WJS_1", "WJS_2", "JES_1"]),
+    WJS_1: new Set(["MAN_1", "WJS_2", "JES_1"]),
+    WJS_2: new Set(["MAN_1", "WJS_1", "JES_1"]),
+    JES_1: new Set(["MAN_1", "WJS_1", "WJS_2"])
+};
+
 const network: Record<string, Set<string>> = {};
 for (const [from, toList] of Object.entries(NETWORK_JSON)) {
     network[from as string] = new Set(toList);
@@ -473,6 +468,12 @@ export default network;
 
 export function isAdjacent(from: string, to: string): boolean {
     const adjacentLocations = network[from];
+    if (!adjacentLocations) return false;
+    return adjacentLocations.has(to);
+}
+
+export function isJesmondJunction(from: string, to: string): boolean {
+    const adjacentLocations = JJC_NETWORK[from];
     if (!adjacentLocations) return false;
     return adjacentLocations.has(to);
 }

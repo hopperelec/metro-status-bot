@@ -18,7 +18,7 @@ import {
     announceTrainAtSouthShieldsP1,
     announceECS,
     announceTrainAtSunderlandP1orP4,
-    announceTrainTeleported
+    announceTrainTeleported, announceTrainUsingJJC
 } from "./rendering";
 import {proxy, updateActivity} from "./bot";
 import {
@@ -43,7 +43,7 @@ import {
 import {getExpectedTrainState, isNightHours, secondsSinceMidnight, whenIsNextDay} from "./timetable";
 import {TrainEmbedData} from "./rendering";
 import {isInSharedStretch} from "./utils";
-import {isAdjacent} from "./network-graph";
+import {isAdjacent, isJesmondJunction} from "./network-graph";
 
 type TrainCheckData<Status = ActiveTrainHistoryStatus> = {
     trn: string;
@@ -335,12 +335,19 @@ async function eitherAPIChecks(
             prev.status.timesAPI ? parseTimesAPILocation(prev.status.timesAPI.lastEvent.location) : undefined
         );
         if (teleportInfo) {
-            announcements.push(fullEmbedData => announceTrainTeleported(
-                fullEmbedData,
-                { trn, ...prev },
-                teleportInfo.prevLocation,
-                teleportInfo.currLocation
-            ));
+            if (isJesmondJunction(teleportInfo.prevLocation, teleportInfo.currLocation)) {
+                announcements.push(fullEmbedData => announceTrainUsingJJC(
+                    fullEmbedData,
+                    { trn, ...prev }
+                ));
+            } else {
+                announcements.push(fullEmbedData => announceTrainTeleported(
+                    fullEmbedData,
+                    { trn, ...prev },
+                    teleportInfo.prevLocation,
+                    teleportInfo.currLocation
+                ));
+            }
         }
 
         // Don't check the platform if the location hasn't changed

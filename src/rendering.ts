@@ -345,6 +345,13 @@ export async function announceTrainTeleported(
     });
 }
 
+export async function announceTrainUsingJJC(currStatus: TrainEmbedData, prevStatus: TrainEmbedData) {
+    await alert({
+        content: `🤔 Train T${currStatus.trn} appears to have used Jesmond Junction. It is probably not in service.`,
+        embeds: [trainEmbed(currStatus), prevTrainStatusEmbed(prevStatus)]
+    });
+}
+
 export async function announceAllTrainsDisappeared(trns: Set<string>) {
     await alert({content: `❌ All ${trns.size} active trains have disappeared simultaneously!\n${listTrns(trns)}`});
 }

@@ -331,6 +331,20 @@ export async function announceTrainAtSunderlandP1orP4(train: TrainEmbedData, pla
     });
 }
 
+export async function announceTrainTeleported(
+    currStatus: TrainEmbedData,
+    prevStatus: TrainEmbedData,
+    prevLocation: string,
+    currLocation: string
+) {
+    const [prevStation, prevPlatform] = prevLocation.split('_');
+    const [currStation, currPlatform] = currLocation.split('_');
+    await alert({
+        content: `🌀 Train T${currStatus.trn} has teleported from ${renderPlatform(prevStation, +prevPlatform)} to ${renderPlatform(currStation, +currPlatform)}. This usually indicates a TRN swap.`,
+        embeds: [trainEmbed(currStatus), prevTrainStatusEmbed(prevStatus)]
+    });
+}
+
 export async function announceAllTrainsDisappeared(trns: Set<string>) {
     await alert({content: `❌ All ${trns.size} active trains have disappeared simultaneously!\n${listTrns(trns)}`});
 }

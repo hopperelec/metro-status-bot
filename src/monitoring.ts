@@ -17,7 +17,8 @@ import {
     announceTrainAtUnrecognisedPlatform,
     announceTrainAtSouthShieldsP1,
     announceECS,
-    announceTrainAtSunderlandP1orP4
+    announceTrainAtSunderlandP1orP4,
+    announceTrainTeleported
 } from "./rendering";
 import {proxy, updateActivity} from "./bot";
 import {
@@ -42,6 +43,7 @@ import {
 import {getExpectedTrainState, isNightHours, secondsSinceMidnight, whenIsNextDay} from "./timetable";
 import {TrainEmbedData} from "./rendering";
 import {isInSharedStretch} from "./utils";
+import {isAdjacent} from "./network-graph";
 
 type TrainCheckData<Status = ActiveTrainHistoryStatus> = {
     trn: string;
@@ -236,6 +238,49 @@ function getNewUnrecognisedDestinations({curr, prev}: TrainCheckData) {
     return newUnrecognisedDestinations;
 }
 
+function hasTeleported(
+    parsedLastSeen?: ParsedLastSeen,
+    timesAPILocation?: ParsedTimesAPILocation,
+    prevParsedLastSeen?: ParsedLastSeen,
+    prevTimesAPILocation?: ParsedTimesAPILocation
+): { currLocation: string; prevLocation: string } {
+    const currLocations = new Set<string>();
+    if (timesAPILocation) {
+        const stationCode = getStationCode(timesAPILocation.station);
+        if (stationCode) {
+            currLocations.add(`${stationCode}_${timesAPILocation.platform}`);
+        }
+    }
+    if (parsedLastSeen) {
+        const stationCode = getStationCode(parsedLastSeen.station);
+        if (stationCode) {
+            currLocations.add(`${stationCode}_${parsedLastSeen.platform}`);
+        }
+    }
+
+    const prevLocations = new Set<string>();
+    if (prevTimesAPILocation) {
+        const stationCode = getStationCode(prevTimesAPILocation.station);
+        if (stationCode) {
+            prevLocations.add(`${stationCode}_${prevTimesAPILocation.platform}`);
+        }
+    }
+    if (prevParsedLastSeen) {
+        const stationCode = getStationCode(prevParsedLastSeen.station);
+        if (stationCode) {
+            prevLocations.add(`${stationCode}_${prevParsedLastSeen.platform}`);
+        }
+    }
+
+    for (const currLocation of currLocations) {
+        for (const prevLocation of prevLocations) {
+            if (prevLocation !== currLocation && !isAdjacent(prevLocation, currLocation)) {
+                return { currLocation, prevLocation };
+            }
+        }
+    }
+}
+
 // Checks which can be done with either API
 async function eitherAPIChecks(
     checkData: TrainCheckData,
@@ -282,17 +327,34 @@ async function eitherAPIChecks(
         shouldCheckPlatform = false;
     }
 
-    // Don't check the platform if the location hasn't changed
-    if (prev?.status?.timesAPI) {
-        if (curr.status.timesAPI?.lastEvent.location === prev.status.timesAPI.lastEvent.location) {
-            shouldCheckPlatform = false;
+    if (prev?.status) {
+        const teleportInfo = hasTeleported(
+            parsedLastSeen,
+            timesAPILocation,
+            prev.status.trainStatusesAPI ? parseLastSeen(prev.status.trainStatusesAPI.lastSeen) : undefined,
+            prev.status.timesAPI ? parseTimesAPILocation(prev.status.timesAPI.lastEvent.location) : undefined
+        );
+        if (teleportInfo) {
+            announcements.push(fullEmbedData => announceTrainTeleported(
+                fullEmbedData,
+                { trn, ...prev },
+                teleportInfo.prevLocation,
+                teleportInfo.currLocation
+            ));
         }
-    } else if (prev?.status?.trainStatusesAPI) {
-        const parsedPrevLastSeen = parseLastSeen(prev.status.trainStatusesAPI.lastSeen);
-        if (
-            parsedLastSeen?.station === parsedPrevLastSeen?.station &&
-            parsedLastSeen?.platform === parsedPrevLastSeen?.platform
-        ) shouldCheckPlatform = false;
+
+        // Don't check the platform if the location hasn't changed
+        if (prev.status.timesAPI) {
+            if (curr.status.timesAPI?.lastEvent.location === prev.status.timesAPI.lastEvent.location) {
+                shouldCheckPlatform = false;
+            }
+        } else if (prev.status.trainStatusesAPI) {
+            const parsedPrevLastSeen = parseLastSeen(prev.status.trainStatusesAPI.lastSeen);
+            if (
+                parsedLastSeen?.station === parsedPrevLastSeen?.station &&
+                parsedLastSeen?.platform === parsedPrevLastSeen?.platform
+            ) shouldCheckPlatform = false;
+        }
     }
 
     if (shouldCheckPlatform) {

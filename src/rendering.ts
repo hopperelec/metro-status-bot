@@ -317,28 +317,6 @@ export async function announceTrainAtUnrecognisedPlatform(train: TrainEmbedData)
     });
 }
 
-export async function announceTrainAtStJamesP2(train: TrainEmbedData) {
-    await alert({
-        content: `🤔 Train T${train.trn} is at St James platform 2. ` +
-            'This usually means either:\n' +
-            '- it is ending service\n' +
-            '- there is a Not In Service train on platform 1.\n' +
-            '- there is ongoing maintenance work on platform 1.',
-        embeds: [trainEmbed(train)]
-    });
-}
-
-export async function announceTrainsAtBothPlatformsStJames(
-    train1: TrainEmbedData,
-    train2: TrainEmbedData
-) {
-    await alert({
-        content: `🤔 Both platforms at St James are being used simultaneously, by trains T${train1.trn} and T${train2.trn}. ` +
-            'This usually means one of them is not in service.',
-        embeds: [trainEmbed(train1), trainEmbed(train2)]
-    });
-}
-
 export async function announceTrainAtSouthShieldsP1(train: TrainEmbedData) {
     await alert({
         content: `🤔 Train T${train.trn} is at South Shields platform 1.`,

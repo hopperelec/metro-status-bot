@@ -14,16 +14,14 @@ import {
     announceMultipleDisappearedTrains,
     announceMultipleReappearedTrains,
     announceUnparseableLastEventLocation,
-    announceTrainAtStJamesP2,
     announceTrainAtUnrecognisedPlatform,
     announceTrainAtSouthShieldsP1,
     announceECS,
-    announceTrainsAtBothPlatformsStJames,
     announceTrainAtSunderlandP1orP4
 } from "./rendering";
 import {proxy, updateActivity} from "./bot";
 import {
-    apiConstants, getStationCode, refreshCache, lastHistoryEntries, compareTimes,
+    apiConstants, getStationCode, refreshCache, lastHistoryEntries,
     trainsWithHistory, setLastHeartbeat, lastHeartbeat, getTodaysTimetable
 } from "./cache";
 import {
@@ -31,7 +29,7 @@ import {
     ActiveTrainHistoryStatus,
     CollatedTrain,
     FullNewTrainsHistoryPayload,
-    FullTrainsResponse, HeartbeatErrorPayload,
+    HeartbeatErrorPayload,
     ParsedLastSeen,
     ParsedTimesAPILocation,
     parseLastSeen,
@@ -104,7 +102,6 @@ async function getFullEmbedData({ trn, curr }: TrainCheckData): Promise<TrainEmb
 }
 
 async function checkPlatform(
-    trn: string,
     stationName: string,
     platform: PlatformNumber,
     time: number
@@ -121,21 +118,6 @@ async function checkPlatform(
             }
             return;
         case 2:
-            if (stationName === 'St James') {
-                const trainTimetable = (await getTodaysTimetable()).trains[trn];
-                if (!trainTimetable) return;
-                const firstEntry = trainTimetable[0];
-                if (
-                    firstEntry.location === 'SJM_2' && firstEntry.departureTime &&
-                    compareTimes(time, firstEntry.departureTime) <= 0
-                ) return;
-                const lastEntry = trainTimetable[trainTimetable.length - 1];
-                if (
-                    lastEntry.location === 'SJM_2' && lastEntry.arrivalTime &&
-                    compareTimes(time, lastEntry.arrivalTime) >= 0
-                ) return;
-                return "sjm-p2";
-            }
             return;
         case 3:
             if (stationName === 'Monument' || stationName === 'Sunderland') return;
@@ -317,7 +299,6 @@ async function eitherAPIChecks(
         const platformNumber = timesAPILocation?.platform ?? parsedLastSeen?.platform;
         checkPromises.push(
             checkPlatform(
-                trn,
                 parsedLastSeen?.station ?? timesAPILocation.station,
                 platformNumber,
                 secondsSinceMidnight(checkData.curr.date)
@@ -328,30 +309,6 @@ async function eitherAPIChecks(
                     // So don't announce trains at South Shields platform 1 after midnight.
                     if (curr.date.getHours() >= apiConstants.NEW_DAY_HOUR) {
                         announcements.push(announceTrainAtSouthShieldsP1);
-                    }
-                } else if (platformCheck === "sjm-p2") {
-                    // Check if there is a train at St James platform 1
-                    const trains = await proxy.getTrains() as FullTrainsResponse;
-                    const sjmP1Train = Object.entries(trains.trains).find(
-                        ([_, train]) => {
-                            if (train.status.timesAPI?.lastEvent.location === "St James Platform 1") return true;
-                            if (!train.status.trainStatusesAPI) return false;
-                            const parsedLastSeen = parseLastSeen(train.status.trainStatusesAPI.lastSeen);
-                            return parsedLastSeen?.station === "SJM" && parsedLastSeen?.platform === 1;
-                        }
-                    );
-                    if (sjmP1Train) {
-                        announcements.push(async fullEmbedData => announceTrainsAtBothPlatformsStJames(
-                            {
-                                trn: sjmP1Train[0],
-                                date: sjmP1Train[1].lastChanged,
-                                status: sjmP1Train[1].status,
-                                timetable: (await getTodaysTimetable()).trains[sjmP1Train[0]],
-                            },
-                            fullEmbedData
-                        ));
-                    } else {
-                        announcements.push(announceTrainAtStJamesP2);
                     }
                 } else if (platformCheck === 'sun-p14') {
                     announcements.push(fullEmbedData => announceTrainAtSunderlandP1orP4(fullEmbedData, platformNumber as 1 | 4));

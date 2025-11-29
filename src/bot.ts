@@ -45,6 +45,11 @@ client.on(Events.InteractionCreate, handleInteraction);
 
 client.on(Events.Error, console.error);
 
+process.on('unhandledRejection', (error: Error, origin: string) => {
+    // Temporary until I find out the exact error structure of UND_ERR_CONNECT_TIMEOUT
+    console.error(`Unhandled rejection at ${origin}`, error);
+});
+
 export async function updateActivity(numActive: number) {
     client.user.setActivity(
         `${numActive} trains`,

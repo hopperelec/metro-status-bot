@@ -46,15 +46,15 @@ const NETWORK_JSON = {
         "RGC_1"
     ],
     SJM_1: [
-        "MTW_3"
+        "MMT_3"
     ],
     SJM_2: [
-        "MTW_3"
+        "MMT_3"
     ],
-    MTW_3: [
+    MMT_3: [
         "MAN_1"
     ],
-    MTW_4: [
+    MMT_4: [
         "SJM_1",
         "SJM_2"
     ],
@@ -67,7 +67,7 @@ const NETWORK_JSON = {
         // "JES_1"
     ],
     MAN_2: [
-        "MTW_4",
+        "MMT_4",
         "MAN_1"
     ],
     BYK_1: [
@@ -248,24 +248,24 @@ const NETWORK_JSON = {
         "WJS_2"
     ],
     HAY_1: [
-        "MTS_1"
+        "MMT_1"
     ],
     HAY_2: [
         "JES_2",
-        "MTS_1"
+        "MMT_1"
     ],
-    MTS_1: [
+    MMT_1: [
         "CEN_1",
         "HAY_2"
     ],
-    MTS_2: [
+    MMT_2: [
         "HAY_2"
     ],
     CEN_1: [
         "GHD_1"
     ],
     CEN_2: [
-        "MTS_2"
+        "MMT_2"
     ],
     GHD_1: [
         "GST_1"

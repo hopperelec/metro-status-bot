@@ -279,7 +279,8 @@ const NETWORK_JSON = {
         "GST_2"
     ],
     HTH_1: [
-        "PLW_1"
+        "PLW_1",
+        "FEL_2"
     ],
     HTH_2: [
         "FEL_2"

@@ -60,6 +60,7 @@ const NETWORK_JSON = {
     ],
     MAN_1: [
         "BYK_1",
+        "MMT_3",
         "MAN_2",
     ],
     MAN_2: [
@@ -196,7 +197,8 @@ const NETWORK_JSON = {
         "LBN_1"
     ],
     FLE_2: [
-        "BTN_2"
+        "BTN_2",
+        "BTN_1"
     ],
     LBN_1: [
         "SGF_1",

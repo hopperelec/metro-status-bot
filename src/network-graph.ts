@@ -43,7 +43,8 @@ const NETWORK_JSON = {
     ],
     RGC_2: [
         "WBR_2",
-        "RGC_1"
+        "RGC_1",
+        "SGF_1"
     ],
     SJM_1: [
         "MMT_3"

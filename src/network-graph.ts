@@ -326,7 +326,8 @@ const NETWORK_JSON = {
         "SMD_2"
     ],
     CHI_1: [
-        "SSS_2"
+        "SSS_2",
+        "SSS_1" // Technically requires passing through SSS_2 first, but the Pop app doesn't always show that
     ],
     CHI_2: [
         "TDK_2"
@@ -336,7 +337,8 @@ const NETWORK_JSON = {
         "SSS_1"
     ],
     SSS_1: [
-        "SSS_2"
+        "SSS_2",
+        "CHI_2" // Technically requires passing through SSS_2 first, but the Pop app doesn't always show that
     ],
     PJC_1: [
         "FGT_1",

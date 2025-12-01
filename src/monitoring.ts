@@ -241,41 +241,60 @@ function getNewUnrecognisedDestinations({curr, prev}: TrainCheckData) {
 function hasTeleported(
     parsedLastSeen?: ParsedLastSeen,
     timesAPILocation?: ParsedTimesAPILocation,
+    timesAPIDate?: Date,
     prevParsedLastSeen?: ParsedLastSeen,
-    prevTimesAPILocation?: ParsedTimesAPILocation
+    prevTimesAPILocation?: ParsedTimesAPILocation,
+    prevTimesAPIDate?: Date,
 ): { currLocation: string; prevLocation: string } {
-    const currLocations = new Set<string>();
-    if (timesAPILocation) {
-        const stationCode = getStationCode(timesAPILocation.station);
-        if (stationCode) {
-            currLocations.add(`${stationCode}_${timesAPILocation.platform}`);
-        }
-    }
-    if (parsedLastSeen) {
+    // This code is a complete mess, but I have no idea how to clean it
+    if (parsedLastSeen && prevParsedLastSeen) {
         const stationCode = getStationCode(parsedLastSeen.station);
-        if (stationCode) {
-            currLocations.add(`${stationCode}_${parsedLastSeen.platform}`);
+        const prevStationCode = getStationCode(prevParsedLastSeen.station);
+        if (stationCode && prevStationCode) {
+            const currLocation = `${stationCode}_${parsedLastSeen.platform}`;
+            const prevLocation = `${prevStationCode}_${prevParsedLastSeen.platform}`;
+            if (currLocation !== prevLocation) {
+                const currMins = parsedLastSeen.hours * 60 + parsedLastSeen.minutes;
+                const prevMins = prevParsedLastSeen.hours * 60 + prevParsedLastSeen.minutes;
+                if (currMins === prevMins) {
+                    if (!(isAdjacent(prevLocation, currLocation) || isAdjacent(currLocation, prevLocation))) {
+                        return { currLocation, prevLocation };
+                    }
+                } else if (
+                    (currMins >= prevMins && currMins - prevMins < 720) ||
+                    (currMins < prevMins && currMins + 1440 - prevMins < 720)
+                ) {
+                    if (!isAdjacent(prevLocation, currLocation)) {
+                        return { currLocation, prevLocation };
+                    }
+                } else {
+                    if (!isAdjacent(currLocation, prevLocation)) {
+                        return { currLocation, prevLocation };
+                    }
+                }
+            }
         }
     }
-
-    const prevLocations = new Set<string>();
-    if (prevTimesAPILocation) {
-        const stationCode = getStationCode(prevTimesAPILocation.station);
-        if (stationCode) {
-            prevLocations.add(`${stationCode}_${prevTimesAPILocation.platform}`);
-        }
-    }
-    if (prevParsedLastSeen) {
-        const stationCode = getStationCode(prevParsedLastSeen.station);
-        if (stationCode) {
-            prevLocations.add(`${stationCode}_${prevParsedLastSeen.platform}`);
-        }
-    }
-
-    for (const currLocation of currLocations) {
-        for (const prevLocation of prevLocations) {
-            if (prevLocation !== currLocation && !isAdjacent(prevLocation, currLocation)) {
-                return { currLocation, prevLocation };
+    if (timesAPILocation && timesAPIDate && prevTimesAPILocation && prevTimesAPIDate) {
+        const stationCode = getStationCode(timesAPILocation.station);
+        const prevStationCode = getStationCode(prevTimesAPILocation.station);
+        if (stationCode && prevStationCode) {
+            const currLocation = `${stationCode}_${timesAPILocation.platform}`;
+            const prevLocation = `${prevStationCode}_${prevTimesAPILocation.platform}`;
+            if (currLocation !== prevLocation) {
+                if (timesAPIDate.getTime() === prevTimesAPIDate.getTime()) {
+                    if (!(isAdjacent(prevLocation, currLocation) || isAdjacent(currLocation, prevLocation))) {
+                        return { currLocation, prevLocation };
+                    }
+                } else if (timesAPIDate.getTime() > prevTimesAPIDate.getTime()) {
+                    if (!isAdjacent(prevLocation, currLocation)) {
+                        return { currLocation, prevLocation };
+                    }
+                } else {
+                    if (!isAdjacent(currLocation, prevLocation)) {
+                        return { currLocation, prevLocation };
+                    }
+                }
             }
         }
     }
@@ -331,8 +350,10 @@ async function eitherAPIChecks(
         const teleportInfo = hasTeleported(
             parsedLastSeen,
             timesAPILocation,
+            curr.status.timesAPI.lastEvent.time,
             prev.status.trainStatusesAPI ? parseLastSeen(prev.status.trainStatusesAPI.lastSeen) : undefined,
-            prev.status.timesAPI ? parseTimesAPILocation(prev.status.timesAPI.lastEvent.location) : undefined
+            prev.status.timesAPI ? parseTimesAPILocation(prev.status.timesAPI.lastEvent.location) : undefined,
+            prev.status.timesAPI?.lastEvent.time
         );
         if (teleportInfo) {
             if (isJesmondJunction(teleportInfo.prevLocation, teleportInfo.currLocation)) {

@@ -1,4 +1,9 @@
-import {DEPARTED_FGT_TO_SHARED_DELAY, MULTIPLE_TRAINS_THRESHOLD, TIMES_API_RESTART_TIME} from "./constants";
+import {
+    DEPARTED_FGT_TO_SHARED_DELAY,
+    LATE_START_THRESHOLD,
+    MULTIPLE_TRAINS_THRESHOLD,
+    TIMES_API_RESTART_TIME
+} from "./constants";
 import {
     announceDisappearedTrain,
     announceReappearedTrain,
@@ -18,7 +23,7 @@ import {
     announceTrainAtSouthShieldsP1,
     announceECS,
     announceTrainAtSunderlandP1orP4,
-    announceTrainTeleported, announceTrainUsingJJC
+    announceTrainTeleported, announceTrainUsingJJC, announceTrainAppearedLate
 } from "./rendering";
 import {proxy, updateActivity} from "./bot";
 import {
@@ -319,8 +324,27 @@ async function eitherAPIChecks(
             } else if (shouldBeActive === "ecs") {
                 announcements.push(announceECS);
             }
-        })
+        }),
     ];
+
+    // Check if this is the first time it has been active today ...
+    if (prev && whenIsNextDay(prev.date).getDate() !== whenIsNextDay(curr.date).getDate()) {
+        checkPromises.push(
+            getTodaysTimetable().then(async dayTimetable => {
+                // ... and if it is significantly later than its first timetabled passenger departure
+                const trainTimetable = dayTimetable.trains[trn];
+                if (!trainTimetable) return;
+                const firstInServiceEntry = trainTimetable.find(
+                    entry => entry.inService && entry.departureTime !== undefined
+                );
+                if (!firstInServiceEntry) return;
+                const delay = secondsSinceMidnight(curr.date) - firstInServiceEntry.departureTime;
+                if (delay > LATE_START_THRESHOLD) {
+                    announcements.push(fullEmbedData => announceTrainAppearedLate(fullEmbedData, delay));
+                }
+            })
+        )
+    }
 
     const newUnrecognisedDestinations = getNewUnrecognisedDestinations(checkData);
     if (newUnrecognisedDestinations.length) {
@@ -350,7 +374,7 @@ async function eitherAPIChecks(
         const teleportInfo = hasTeleported(
             parsedLastSeen,
             timesAPILocation,
-            curr.status.timesAPI.lastEvent.time,
+            curr.status.timesAPI?.lastEvent.time,
             prev.status.trainStatusesAPI ? parseLastSeen(prev.status.trainStatusesAPI.lastSeen) : undefined,
             prev.status.timesAPI ? parseTimesAPILocation(prev.status.timesAPI.lastEvent.location) : undefined,
             prev.status.timesAPI?.lastEvent.time

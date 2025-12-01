@@ -378,6 +378,13 @@ export async function announceMultipleReappearedTrains(trns: Set<string>) {
     await alert(`✅ The following ${trns.size} trains have reappeared simultaneously!\n${listTrns(trns)}`);
 }
 
+export async function announceTrainAppearedLate(train: TrainEmbedData, delay: number) {
+    await alert({
+        content: `✅ Train T${train.trn} has appeared for the first time today, but ${Math.round(delay / 60)} minutes later than its first timetabled passenger departure`,
+        embeds: [trainEmbed(train)]
+    });
+}
+
 // Train statuses API
 
 export async function announceUnparseableLastSeen(

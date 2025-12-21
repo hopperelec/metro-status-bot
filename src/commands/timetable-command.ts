@@ -174,7 +174,7 @@ export default {
             // Filter using the cached timetable for today
             const todaysTimetable = await getTodaysTimetable();
             dayTimetable = {
-                description: todaysTimetable.description,
+                ...todaysTimetable,
                 trains: {},
             }
             for (const trn of (trns || Object.keys(todaysTimetable.trains))) {
@@ -263,7 +263,7 @@ export default {
             codeblockContent += row.rest + '\n';
         }
 
-        const footer = `-# Based on ${dayTimetable.description}`;
+        const footer = `-# Based on ${dayTimetable.ref} (service ${dayTimetable.serviceId} of ${dayTimetable.description})`;
         const fullContent = `${footer}\n\`\`\`${codeblockContent}\`\`\``;
 
         await deferReply;

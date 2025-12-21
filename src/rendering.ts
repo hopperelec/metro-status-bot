@@ -340,7 +340,7 @@ export async function announceTrainTeleported(
     const [prevStation, prevPlatform] = prevLocation.split('_');
     const [currStation, currPlatform] = currLocation.split('_');
     await alert({
-        content: `🌀 Train T${currStatus.trn} has teleported from ${renderPlatform(prevStation, +prevPlatform)} to ${renderPlatform(currStation, +currPlatform)}. This usually indicates a TRN swap.`,
+        content: `🌀 Train T${currStatus.trn} has teleported from ${renderPlatform(prevStation, +prevPlatform)} to ${renderPlatform(currStation, +currPlatform)}. This could indicate a TRN swap.`,
         embeds: [trainEmbed(currStatus), prevTrainStatusEmbed(prevStatus)]
     });
 }

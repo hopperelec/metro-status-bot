@@ -36,7 +36,8 @@ const NETWORK_JSON = {
         "RGC_1"
     ],
     WBR_2: [
-        "FAW_2"
+        "FAW_2",
+        "KSP_2" // While trains usually show at FAW_2, they occasionally skip straight to KSP_2
     ],
     RGC_1: [
         "SGF_1",
@@ -174,7 +175,8 @@ const NETWORK_JSON = {
         "NPK_1"
     ],
     SMR_2: [
-        "WMN_2"
+        "WMN_2",
+        "SMR_1"
     ],
     NPK_1: [
         "PMV_1"
@@ -217,7 +219,8 @@ const NETWORK_JSON = {
     SGF_2: [
         "LBN_2",
         "RGC_2",
-        "SGF_1"
+        "SGF_1",
+        "ILF_1"
     ],
     ILF_1: [
         "WJS_1"
@@ -234,7 +237,8 @@ const NETWORK_JSON = {
     JES_1: [
         "HAY_1",
         "WJS_1",
-        "WJS_2"
+        "WJS_2",
+        "MMT_1" // While trains usually show at HAY_1, they occasionally skip straight to MMT_1
     ],
     JES_2: [
         "WJS_2"
@@ -357,7 +361,8 @@ const NETWORK_JSON = {
     ],
     FGT_2: [
         "PJC_1",
-        "PJC_2"
+        "PJC_2",
+        "PLW_2" // While trains usually show at PJC, they occasionally skip straight to PLW_2
     ],
     BYW_1: [
         "EBO_1",

@@ -186,8 +186,8 @@ export default {
                     (inService !== undefined && entry.inService !== inService) ||
                     (onlyTermini && entry.arrivalTime !== undefined && entry.departureTime !== undefined) ||
                     (types && !types.has(entry.type)) ||
-                    (startTime !== undefined && compareTimes(entry.arrivalTime || entry.departureTime, startTime) < 0) ||
-                    (endTime !== undefined && compareTimes(entry.departureTime || entry.arrivalTime, endTime) > 0)
+                    (startTime !== undefined && compareTimes(entry.departureTime || entry.arrivalTime, startTime) < 0) ||
+                    (endTime !== undefined && compareTimes(entry.arrivalTime || entry.departureTime, endTime) > 0)
                 ));
                 if (!filteredTimetable.length) continue;
                 if (limit) {

@@ -33,7 +33,7 @@ export default {
         let lines: string[] = [];
 
         if (train.status) {
-            lines.push(`This train is currently active, and it's current status is shown below.`);
+            lines.push(`This train is currently active, and its current status is shown below.`);
         } else {
             lines.push(`No train with TRN ${trn} is currently showing on the Pop app.`);
         }

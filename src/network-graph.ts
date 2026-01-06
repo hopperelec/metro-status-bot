@@ -379,6 +379,7 @@ const NETWORK_JSON = {
     EBO_2: [
         "BYW_2",
         "BYW_1",
+        "EBO_1",
         "FGT_2" // The Pop app doesn't usually show trains at BYW_2, instead skipping to FGT_2
     ],
     SBN_1: [

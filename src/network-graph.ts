@@ -433,7 +433,8 @@ const NETWORK_JSON = {
     ],
     PLI_2: [
         "SUN_3",
-        "SUN_4"
+        "SUN_4",
+        "MSP_2", // After a recent update to the Pop app, trains often skip showing at SUN_3
     ],
     UNI_1: [
         "MLF_1"

@@ -35,9 +35,19 @@ export function isNightHours(trainTimetable: TrainTimetable, date: Date) {
 }
 
 export function getExpectedTrainState(trainTimetable: TrainTimetable, time: number): ExpectedTrainState {
+    // Special case for GTFS timetables, which only include inService entries
+    const firstEntry = trainTimetable[0];
+    if (firstEntry.inService && firstEntry.arrivalTime !== undefined && compareTimes(time, firstEntry.arrivalTime) < 0) {
+        return {
+            event: 'APPROACHING',
+            location: firstEntry.location,
+            inService: false,
+            destination: firstEntry.location,
+        };
+    }
+
     for (const [index, entry] of trainTimetable.entries()) {
-        if (entry.arrivalTime && compareTimes(entry.arrivalTime, time) > 0) {
-            // There should always be a previous entry because the first entry should not have an arrival time
+        if (index !== 0 && entry.arrivalTime && compareTimes(entry.arrivalTime, time) > 0) {
             const previousEntry = trainTimetable[index - 1];
             if (compareTimes(entry.arrivalTime, time) > compareTimes(time, previousEntry.departureTime)) {
                 return {

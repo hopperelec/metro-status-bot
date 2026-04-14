@@ -82,7 +82,7 @@ export function getExpectedTrainState(trainTimetable: TrainTimetable, time: numb
     return {
         event: lastEntry.departureTime && compareTimes(lastEntry.departureTime, time) <= 0 ? 'DEPARTED' : 'ARRIVED',
         location: lastEntry.location,
-        inService: lastEntry.inService,
+        inService: false,
         destination: lastEntry.destination,
     };
 }

@@ -33,7 +33,8 @@ const NETWORK_JSON = {
         "WBR_2" // For some reason, trains often teleport back to WBR_2 very briefly after departing FAW_2
     ],
     WBR_1: [
-        "RGC_1"
+        "RGC_1",
+        "RGC_2"
     ],
     WBR_2: [
         "FAW_2",
@@ -274,7 +275,8 @@ const NETWORK_JSON = {
         "GHD_2"
     ],
     GST_2: [
-        "GHD_2"
+        "GHD_2",
+        "GST_1"
     ],
     FEL_1: [
         "HTH_1",

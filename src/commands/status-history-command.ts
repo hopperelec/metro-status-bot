@@ -20,15 +20,17 @@ interface RenderedEntry {
     rendered: string;
 }
 
+interface FetchResult {
+    veryFirstEntry: Date;
+    entries: RenderedEntry[];
+}
+
 interface PropertyChoice {
     displayName: string;
 }
 
 interface FetchPropertyChoice extends PropertyChoice {
-    customFetch: (trn: string, time: TimeFilter) => Promise<{
-        veryFirstEntry: Date;
-        entries: RenderedEntry[]
-    }>;
+    customFetch: (trn: string, time: TimeFilter) => Promise<FetchResult | undefined>;
 }
 
 interface IterativePropertyChoice<OutputData> extends PropertyChoice {
@@ -36,14 +38,14 @@ interface IterativePropertyChoice<OutputData> extends PropertyChoice {
     limit?: number;
     get?: (data: any) => OutputData;
     equals?: (a: OutputData, b: OutputData) => boolean;
-    render?: (data: OutputData, trainTimetable: TrainTimetable) => string;
+    render?: (data: OutputData, trainTimetable?: TrainTimetable) => string;
 }
 
-function createPropertyChoice<OutputData>(choice: IterativePropertyChoice<OutputData>) {
+function iterativePropertyChoice<OutputData>(choice: IterativePropertyChoice<OutputData>) {
     return choice;
 }
 
-const PROPERTY_CHOICES: Record<string, FetchPropertyChoice | IterativePropertyChoice<unknown>> = {
+const PROPERTY_CHOICES: Record<string, FetchPropertyChoice | IterativePropertyChoice<any>> = {
     active: {
         displayName: "Active?",
         async customFetch(trn, time) {
@@ -68,7 +70,7 @@ const PROPERTY_CHOICES: Record<string, FetchPropertyChoice | IterativePropertyCh
             };
         }
     },
-    destination: createPropertyChoice({
+    destination: iterativePropertyChoice({
         displayName: "Destination",
         statusProps: ["timesAPI.plannedDestinations.name", "trainStatusesAPI.destination"],
         get(data: {
@@ -84,13 +86,13 @@ const PROPERTY_CHOICES: Record<string, FetchPropertyChoice | IterativePropertyCh
             return a.timesAPI === b.timesAPI && a.trainStatusesAPI === b.trainStatusesAPI
         },
         render({ timesAPI, trainStatusesAPI }) {
-            if (timesAPI === trainStatusesAPI) return timesAPI;
+            if (timesAPI === trainStatusesAPI) return timesAPI!;
             if (timesAPI && trainStatusesAPI) return `Times API: ${timesAPI}, Train Statuses API: ${trainStatusesAPI}`;
             if (timesAPI) return `Times API: ${timesAPI}`;
-            if (trainStatusesAPI) return `Train Statuses API: ${trainStatusesAPI}`;
+            return `Train Statuses API: ${trainStatusesAPI}`;
         }
     }),
-    "lastSeen.timesAPI": createPropertyChoice({
+    "lastSeen.timesAPI": iterativePropertyChoice({
         displayName: "Times API last seen",
         statusProps: ["timesAPI.lastEvent"],
         get(data: { timesAPI?: { lastEvent: TimesApiData["lastEvent"] } }) {
@@ -103,7 +105,7 @@ const PROPERTY_CHOICES: Record<string, FetchPropertyChoice | IterativePropertyCh
             return data ? renderTimesAPILastEvent(data, trainTimetable) : "*Not showing in the times API*";
         }
     }),
-    "platform.timesAPI": createPropertyChoice({
+    "platform.timesAPI": iterativePropertyChoice({
         displayName: "Times API platform",
         statusProps: ["timesAPI.lastEvent.location"],
         get(data: { timesAPI?: { lastEvent: { location: string } } }) {
@@ -113,7 +115,7 @@ const PROPERTY_CHOICES: Record<string, FetchPropertyChoice | IterativePropertyCh
             return data ?? "*Not showing in the times API*";
         }
     }),
-    "lastSeen.trainStatusesAPI": createPropertyChoice({
+    "lastSeen.trainStatusesAPI": iterativePropertyChoice({
         displayName: "Train Statuses API last seen",
         statusProps: ["trainStatusesAPI.lastSeen"],
         get(data: { trainStatusesAPI?: { lastSeen: string } }) {
@@ -123,7 +125,7 @@ const PROPERTY_CHOICES: Record<string, FetchPropertyChoice | IterativePropertyCh
             return data ? renderTrainStatusesAPILastSeen(data, trainTimetable) : "*Not showing in the train statuses API*";
         }
     }),
-    "platform.trainStatusesAPI": createPropertyChoice({
+    "platform.trainStatusesAPI": iterativePropertyChoice({
         displayName: "Train Statuses API platform",
         statusProps: ["trainStatusesAPI.lastSeen"],
         get(data: { trainStatusesAPI?: { lastSeen: string } }) {
@@ -202,7 +204,7 @@ async function defaultFetch(
     trn: string,
     time: TrainHistoryOptions["time"],
     historyProperty: IterativePropertyChoice<unknown>
-) {
+): Promise<FetchResult | undefined> {
     // By default, we repeatedly fetch `limit` entries until we have `HISTORY_PAGE_ROWS`.
 
     const isTo = time === undefined || 'to' in time;
@@ -236,11 +238,13 @@ async function defaultFetch(
     while (true) {
         if (entries.length >= HISTORY_PAGE_ROWS) break;
         if (isTo) {
-            if (extract[0].date.getTime() <= firstHistory.summary.firstEntry.getTime()) break;
-            time = {to: new Date(extract[0].date.getTime() - 1)};
+            const extractTime = extract[0]!.date.getTime();
+            if (extractTime <= firstHistory.summary.firstEntry.getTime()) break;
+            time = {to: new Date(extractTime - 1)};
         } else {
-            if (extract[extract.length - 1].date.getTime() >= firstHistory.summary.lastEntry.getTime()) break;
-            time = {from: new Date(extract[extract.length - 1].date.getTime() + 1)}
+            const lastTime = extract[extract.length - 1]!.date.getTime();
+            if (lastTime >= firstHistory.summary.lastEntry.getTime()) break;
+            time = {from: new Date(lastTime + 1)}
         }
         const nextHistory = await proxy.getTrainHistory(trn, {time, limit, props}) as {
             extract: { date: Date; status: any }[]
@@ -287,7 +291,7 @@ async function getPage(
         return { content: `Invalid property: ${historyPropertyName}` };
     }
 
-    let time: TrainHistoryOptions["time"];
+    let time: TimeFilter;
     let timeDescription: string;
     if (range.startsWith("refresh:")) {
         range = range.slice(8);
@@ -296,6 +300,7 @@ async function getPage(
         time = { from: new Date(0) };
         timeDescription = "Earliest entries";
     } else if (range === "last") {
+        time = { to: new Date() };
         timeDescription = "Latest entries";
     } else if (range.includes("...")) {
         if (range.startsWith("...")) {
@@ -306,7 +311,7 @@ async function getPage(
             timeDescription = `From ${formatDate(time.from)}`;
         } else {
             const [from, to] = range.split("...");
-            time = { from: new Date(+from), to: new Date(+to) };
+            time = { from: new Date(+from!), to: new Date(+to!) };
             timeDescription = `Between ${formatDate(time.from)} and ${formatDate(time.to)}`;
         }
     } else {
@@ -316,7 +321,7 @@ async function getPage(
     let fetchResult: {
         veryFirstEntry: Date
         entries: RenderedEntry[]
-    };
+    } | undefined;
     try {
         fetchResult = "customFetch" in historyProperty
             ? await historyProperty.customFetch(trn, time)
@@ -345,9 +350,9 @@ async function getPage(
             lines.push(`- [${formatDate(entry.date)}] ${entry.rendered}`)
         }
         prevButton
-            .setCustomId(`${buttonIdPrefix}:...${fetchResult.entries[0].date.getTime() - 1}`)
-            .setDisabled(fetchResult.veryFirstEntry.getTime() >= fetchResult.entries[0].date.getTime());
-        nextButton.setCustomId(`${buttonIdPrefix}:${fetchResult.entries[fetchResult.entries.length - 1].date.getTime() + 1}...`);
+            .setCustomId(`${buttonIdPrefix}:...${fetchResult.entries[0]!.date.getTime() - 1}`)
+            .setDisabled(fetchResult.veryFirstEntry.getTime() >= fetchResult.entries[0]!.date.getTime());
+        nextButton.setCustomId(`${buttonIdPrefix}:${fetchResult.entries[fetchResult.entries.length - 1]!.date.getTime() + 1}...`);
     } else {
         lines.push("*No entries found matching the criteria.*");
         prevButton.setCustomId(`${buttonIdPrefix}:prev`).setDisabled(true);
@@ -416,7 +421,7 @@ export default {
     },
 
     execute: async interaction => {
-        const trn = normalizeTRN(interaction.options.get('trn').value as string);
+        const trn = normalizeTRN(interaction.options.get('trn', true).value as string);
         if (trn.includes(':')) {
             await interaction.reply({
                 content: "TRN cannot contain a colon.",
@@ -429,8 +434,8 @@ export default {
         const startTime = interaction.options.get('start-time')?.value as string;
         const endDate = interaction.options.get('end-date')?.value as string;
         const endTime = interaction.options.get('end-time')?.value as string;
-        let from: Date;
-        let to: Date;
+        let from: Date | undefined;
+        let to: Date | undefined;
         try {
             if (startDate || startTime) {
                 from = startDate ? parseDateOption(startDate) : new Date();
@@ -452,7 +457,7 @@ export default {
             }
         } catch (error) {
             await interaction.reply({
-                content: error.message,
+                content: error instanceof Error ? error.message : String(error),
                 flags: ["Ephemeral"]
             });
             return;
@@ -461,8 +466,8 @@ export default {
         const deferReply = interaction.deferReply();
         const page = await getPage(
             trn,
-            interaction.options.get('property').value as string,
-            from || to ? `${from?.getTime() || ''}...${to?.getTime() || ''}` : undefined,
+            interaction.options.get('property', true).value as string,
+            from || to ?`${from?.getTime() || ''}...${to?.getTime() || ''}` : undefined,
         );
         await deferReply;
         await interaction.editReply(page);
@@ -471,7 +476,11 @@ export default {
     autoCompleteOptions: async () => Array.from(trainsWithHistory),
 
     button: async (interaction, rest) => {
-        const [trn, property, ...extra] = rest;
+        const [trn, property, ...extra] = rest as [string, string, ...string[]];
+        if (!interaction.message.interactionMetadata) {
+            console.error(`Button clicked on a message that was not sent by a command: ${interaction.customId}`);
+            return;
+        }
         if (interaction.user === interaction.message.interactionMetadata.user) {
             const update = interaction.update({
                 content: `Loading...`,

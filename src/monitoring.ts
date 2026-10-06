@@ -23,7 +23,7 @@ import {
     announceTrainAtSouthShieldsP1,
     announceECS,
     announceTrainAtSunderlandP1orP4,
-    announceTrainTeleported, announceTrainUsingJJC, announceTrainAppearedLate
+    announceTrainTeleported, announceTrainUsingJJC, announceTrainAppearedLate, ActiveTrainEmbedData
 } from "./rendering";
 import {proxy, updateActivity} from "./bot";
 import {
@@ -46,7 +46,6 @@ import {
     TrainStatusesApiData,
 } from "metro-api-client";
 import {getExpectedTrainState, isNightHours, secondsSinceMidnight, whenIsNextDay} from "./timetable";
-import {TrainEmbedData} from "./rendering";
 import {isInSharedStretch} from "./utils";
 import {isAdjacent, isJesmondJunction} from "./network-graph";
 
@@ -62,7 +61,7 @@ type TrainCheckData<Status = ActiveTrainHistoryStatus> = {
     };
 }
 
-type ActiveTrainAnnouncer = (fullEmbedData: TrainEmbedData) => Promise<void>;
+type ActiveTrainAnnouncer = (fullEmbedData: ActiveTrainEmbedData) => Promise<void>;
 
 const missingTrains = new Map<string, {
     announced: true;
@@ -73,7 +72,7 @@ const missingTrains = new Map<string, {
     whenToAnnounce: Date;
 }>;
 
-async function getFullEmbedData({ trn, curr }: TrainCheckData): Promise<TrainEmbedData> {
+async function getFullEmbedData({ trn, curr }: TrainCheckData): Promise<ActiveTrainEmbedData> {
     const timetablePromise = getTodaysTimetable();
 
     let fullStatus: CollatedTrain;
@@ -250,7 +249,7 @@ function hasTeleported(
     prevParsedLastSeen?: ParsedLastSeen,
     prevTimesAPILocation?: ParsedTimesAPILocation,
     prevTimesAPIDate?: Date,
-): { currLocation: string; prevLocation: string } {
+): { currLocation: string; prevLocation: string } | false {
     // This code is a complete mess, but I have no idea how to clean it
     if (parsedLastSeen && prevParsedLastSeen) {
         const stationCode = getStationCode(parsedLastSeen.station);
@@ -303,6 +302,7 @@ function hasTeleported(
             }
         }
     }
+    return false;
 }
 
 // Checks which can be done with either API
@@ -359,7 +359,7 @@ async function eitherAPIChecks(
         announcements.push((fullEmbedData) => announceTrainAtUnrecognisedStation(
             fullEmbedData,
             { trn, ...prev },
-            parsedLastSeen?.station ?? timesAPILocation?.station
+            (parsedLastSeen?.station ?? timesAPILocation?.station)!
         ));
         // Don't check the platform if the station is unrecognized
         shouldCheckPlatform = false;
@@ -409,10 +409,12 @@ async function eitherAPIChecks(
         }
     }
 
-    if (shouldCheckPlatform) {
-        const platformNumber = timesAPILocation?.platform ?? parsedLastSeen?.platform;
+    const platformNumber = timesAPILocation?.platform ?? parsedLastSeen?.platform;
+    const stationName = parsedLastSeen?.station ?? timesAPILocation?.station;
+    // If neither API's location could be parsed, there's nothing to check (and it is already announced as unparseable)
+    if (shouldCheckPlatform && platformNumber !== undefined && stationName !== undefined) {
         const platformCheck = checkPlatform(
-            parsedLastSeen?.station ?? timesAPILocation.station,
+            stationName,
             platformNumber,
             secondsSinceMidnight(checkData.curr.date)
         );
@@ -500,7 +502,7 @@ async function checkMissingTrains() {
         [...missingTrains].map(async ([trn, details]) => {
             if (details.announced) {
                 if (details.whenToForget < lastHeartbeat) missingTrains.delete(trn);
-            } else if (details.announced === false && details.whenToAnnounce < lastHeartbeat) {
+            } else if (details.whenToAnnounce < lastHeartbeat) {
                 await announceDisappearedTrain({
                     trn,
                     timetable: (await getTodaysTimetable()).trains[trn],
@@ -516,7 +518,7 @@ function isDepartedFGTtoShared(status: ActiveTrainHistoryStatus) {
     if (
         status.timesAPI?.lastEvent.location.startsWith("Fellgate Platform ") &&
         status.timesAPI?.lastEvent.type === "DEPARTED" &&
-        isInSharedStretch(getStationCode(status.timesAPI?.plannedDestinations[0].name))
+        isInSharedStretch(getStationCode(status.timesAPI?.plannedDestinations[0]!.name))
     ) return true;
     if (!status.trainStatusesAPI) return false;
     const parsedLastSeen = parseLastSeen(status.trainStatusesAPI.lastSeen);

@@ -32,7 +32,7 @@ const COMMANDS = [
     return acc;
 }, {} as Record<string, MSBCommand>);
 
-async function getAutocompleteOptions(commandName: string, focusedOption: AutocompleteFocusedOption) {
+async function getAutocompleteOptions(commandName: string, focusedOption: AutocompleteFocusedOption): Promise<string[]> {
     const command = COMMANDS[commandName];
     if (command) {
         if (command.autoCompleteOptions) {
@@ -45,11 +45,11 @@ async function getAutocompleteOptions(commandName: string, focusedOption: Autoco
     return [];
 }
 
-export async function registerCommands(client: Client) {
-    await client.application.commands.set(Object.values(COMMANDS).map(command => command.DEFINITION));
+export async function registerCommands(client: Client): Promise<void> {
+    await client.application!.commands.set(Object.values(COMMANDS).map(command => command.DEFINITION));
 }
 
-export async function handleInteraction(interaction: Interaction) {
+export async function handleInteraction(interaction: Interaction): Promise<void> {
     if (interaction.isCommand()) {
         const command = COMMANDS[interaction.commandName];
         if (!command) {

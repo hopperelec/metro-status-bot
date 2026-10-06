@@ -1,6 +1,6 @@
 import {
-    ActionRowBuilder, ButtonBuilder,
-    ButtonStyle, EmbedBuilder, InteractionUpdateOptions
+    ActionRowBuilder, BaseMessageOptions, ButtonBuilder,
+    ButtonStyle, EmbedBuilder,
 } from "discord.js";
 import {DueTime, PlatformNumber, TimesApiData, TrainTimetable} from "metro-api-client";
 import {proxy} from "../bot";
@@ -34,13 +34,13 @@ type BaseFilteredDueTime = {
     }
 }
 
-function summarizeTrain(time: DueTime, train: BaseFilteredDueTime['status'], trainTimetable: TrainTimetable) {
+function summarizeTrain(time: DueTime, train: BaseFilteredDueTime['status'], trainTimetable?: TrainTimetable): string {
     const lines = [`**Predicted time:** ${time.actualPredictedTime.toLocaleTimeString('en-GB')}`];
     if (time.actualScheduledTime) {
         lines[0] += ` - **Scheduled time:** ${time.actualScheduledTime.toLocaleTimeString('en-GB')}`;
     }
 
-    let destination = `**Destination:** ⌛ ${train.timesAPI.plannedDestinations[0].name}`;
+    let destination = `**Destination:** ⌛ ${train.timesAPI.plannedDestinations[0]!.name}`;
     if (train.trainStatusesAPI) {
         destination += ` 📍 ${train.trainStatusesAPI.destination}`;
     }
@@ -54,7 +54,7 @@ function summarizeTrain(time: DueTime, train: BaseFilteredDueTime['status'], tra
     return lines.join('\n');
 }
 
-function createButtons(context: string, page: number, isLastPage: boolean) {
+function createButtons(context: string, page: number, isLastPage: boolean): ActionRowBuilder<ButtonBuilder>[] {
     return [
         new ActionRowBuilder<ButtonBuilder>().addComponents(
             new ButtonBuilder()
@@ -83,7 +83,7 @@ function createButtons(context: string, page: number, isLastPage: boolean) {
     ]
 }
 
-async function getStationPage(stationCode: string, page = "first") {
+async function getStationPage(stationCode: string, page = "first"): Promise<string | BaseMessageOptions> {
     const embedBuilder = new EmbedBuilder();
     let dueTimes: (BaseFilteredDueTime & { platform: number })[];
     try {
@@ -110,13 +110,10 @@ async function getStationPage(stationCode: string, page = "first") {
     } else {
         const todaysTimetable = await getTodaysTimetable();
         embedBuilder.addFields(
-            dueTimes.slice((pageNum - 1) * DUE_TIMES_PAGE_ROWS, pageNum * DUE_TIMES_PAGE_ROWS).map(dueTime => {
-                const lines = summarizeTrain(dueTime.time, dueTime.status, todaysTimetable.trains[dueTime.trn]);
-                return {
-                    name: `**P${dueTime.platform} - T${dueTime.trn} - ${dueInToString(dueTime.time.dueIn)}**`,
-                    value: lines
-                }
-            })
+            dueTimes.slice((pageNum - 1) * DUE_TIMES_PAGE_ROWS, pageNum * DUE_TIMES_PAGE_ROWS).map(dueTime => ({
+                name: `**P${dueTime.platform} - T${dueTime.trn} - ${dueInToString(dueTime.time.dueIn)}**`,
+                value: summarizeTrain(dueTime.time, dueTime.status, todaysTimetable.trains[dueTime.trn])
+            }))
         )
     }
     return {
@@ -125,7 +122,7 @@ async function getStationPage(stationCode: string, page = "first") {
     };
 }
 
-async function getPlatformPage(stationCode: string, platform: PlatformNumber, page = "first") {
+async function getPlatformPage(stationCode: string, platform: PlatformNumber, page = "first"): Promise<string | BaseMessageOptions> {
     const embedBuilder = new EmbedBuilder();
     let dueTimes: (BaseFilteredDueTime & { platform: PlatformNumber })[];
     try {
@@ -216,13 +213,17 @@ export default {
         ).map(code => `${code} - ${apiConstants.LOCATION_ABBREVIATIONS[code]}`),
 
     button: async (interaction, rest) => {
-        let page: string | InteractionUpdateOptions;
+        let page: string | BaseMessageOptions;
         if (rest.length === 3) {
-            page = await getPlatformPage(rest[0], +rest[1] as PlatformNumber, rest[2]);
+            page = await getPlatformPage(rest[0]!, +rest[1]! as PlatformNumber, rest[2]);
         } else if (rest.length === 2) {
-            page = await getStationPage(rest[0], rest[1]);
+            page = await getStationPage(rest[0]!, rest[1]!);
         } else {
             console.error(`Unknown button clicked: ${interaction.customId}`);
+            return;
+        }
+        if (!interaction.message.interactionMetadata) {
+            console.error(`Button clicked on a message that was not sent by a command: ${interaction.customId}`);
             return;
         }
         if (interaction.user === interaction.message.interactionMetadata.user) {

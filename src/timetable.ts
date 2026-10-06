@@ -8,39 +8,39 @@ import {
 } from "metro-api-client";
 import {MONUMENT_STATION_CODES} from "./constants";
 
-export function whenIsNextDay(date?: Date) {
-    let nextDay = new Date(date);
+export function whenIsNextDay(date = new Date()): Date {
+    const nextDay = new Date(date);
     nextDay.setHours(apiConstants.NEW_DAY_HOUR);
     if (nextDay < date) nextDay.setDate(nextDay.getDate() + 1);
     return nextDay;
 }
 
-export function secondsSinceMidnight(date?: Date) {
+export function secondsSinceMidnight(date?: Date): number {
     if (!date) date = new Date();
     return date.getHours() * 3600 + date.getMinutes() * 60 + date.getSeconds();
 }
 
-export function getTimetabledTrains(timetable: DayTimetable, time: number) {
+export function getTimetabledTrains(timetable: DayTimetable, time: number): string[] {
     return Object.entries(timetable.trains)
         .filter(([_,trainTimetable]) => getExpectedTrainState(trainTimetable, time).inService)
         .map(([trn]) => trn);
 }
 
-export function isNightHours(trainTimetable: TrainTimetable, date: Date) {
+export function isNightHours(trainTimetable: TrainTimetable, date: Date): boolean {
     const time = secondsSinceMidnight(date);
 
-    const firstEntry = trainTimetable[0];
+    const firstEntry = trainTimetable[0]!;
     const firstTime = firstEntry.arrivalTime ?? firstEntry.departureTime;
     if (compareTimes(time, firstTime) < 0) return true;
 
-    const lastEntry = trainTimetable[trainTimetable.length - 1];
+    const lastEntry = trainTimetable[trainTimetable.length - 1]!;
     const lastTime = lastEntry.departureTime ?? lastEntry.arrivalTime;
     return compareTimes(time, lastTime) > 0;
 }
 
 export function getExpectedTrainState(trainTimetable: TrainTimetable, time: number): ExpectedTrainState {
     // Special case for GTFS timetables, which only include inService entries
-    const firstEntry = trainTimetable[0];
+    const firstEntry = trainTimetable[0]!;
     if (firstEntry.inService && firstEntry.arrivalTime !== undefined && compareTimes(time, firstEntry.arrivalTime) < 0) {
         return {
             event: 'APPROACHING',
@@ -52,7 +52,7 @@ export function getExpectedTrainState(trainTimetable: TrainTimetable, time: numb
 
     for (const [index, entry] of trainTimetable.entries()) {
         if (index !== 0 && entry.arrivalTime && compareTimes(entry.arrivalTime, time) > 0) {
-            const previousEntry = trainTimetable[index - 1];
+            const previousEntry = trainTimetable[index - 1]!;
             if (compareTimes(entry.arrivalTime, time) > compareTimes(time, previousEntry.departureTime)) {
                 return {
                     event: 'DEPARTED',
@@ -78,7 +78,7 @@ export function getExpectedTrainState(trainTimetable: TrainTimetable, time: numb
         }
     }
     // If we reach here, the train has already departed from the last station
-    const lastEntry = trainTimetable[trainTimetable.length - 1];
+    const lastEntry = trainTimetable[trainTimetable.length - 1]!;
     return {
         event: lastEntry.departureTime && compareTimes(lastEntry.departureTime, time) <= 0 ? 'DEPARTED' : 'ARRIVED',
         location: lastEntry.location,
@@ -88,11 +88,11 @@ export function getExpectedTrainState(trainTimetable: TrainTimetable, time: numb
 }
 
 const LOCATION_REGEX = new RegExp(/^(?<station>[A-Z]{3})(_(?<platform>\d+))?$/);
-export function parseLocation(location: string) {
+export function parseLocation(location: string): { station: string, platform?: number } | undefined {
     const match = location.match(LOCATION_REGEX);
     if (match?.groups) {
         return {
-            station: match.groups.station,
+            station: match.groups.station!,
             platform: match.groups.platform ? +match.groups.platform : undefined
         };
     }
@@ -100,11 +100,12 @@ export function parseLocation(location: string) {
 
 const IGNORE_PLATFORM_STATIONS = ['APT', 'SHL', 'SJM', 'SSS', 'PJC'];
 
-export function locationsMatch(location1: string, location2: string) {
+export function locationsMatch(location1: string, location2: string): boolean {
     if (location1 === location2) return true;
     const parsedLocation1 = parseLocation(location1);
+    if (!parsedLocation1) return false;
     const parsedLocation2 = parseLocation(location2);
-    if (!parsedLocation1 || !parsedLocation2) return false;
+    if (!parsedLocation2) return false;
     if (
         parsedLocation1.platform !== undefined &&
         parsedLocation2.platform !== undefined &&
@@ -121,7 +122,7 @@ export function calculateDelay(
     time: number,
     location: string,
     departed: boolean
-) {
+): number {
     if (!trainTimetable) return Infinity;
     let smallestTimeDifference = Infinity;
     for (const entry of trainTimetable) {
@@ -139,9 +140,11 @@ export function calculateDelay(
 export function calculateDelayFromTimesAPI(
     trainTimetable: TrainTimetable,
     lastEvent: TimesApiData['lastEvent'],
-) {
+): number {
     const parsedLocation = parseTimesAPILocation(lastEvent.location);
-    if (parsedLocation) return calculateDelay(
+    // The delay can't be known without the location, which is different to the train being untimetabled (Infinity)
+    if (!parsedLocation) return NaN;
+    return calculateDelay(
         trainTimetable,
         secondsSinceMidnight(lastEvent.time),
         `${getStationCode(parsedLocation.station)}_${parsedLocation.platform}`,
@@ -154,9 +157,11 @@ export function calculateDelayFromTimesAPI(
 export function calculateDelayFromTrainStatusesAPI(
     trainTimetable: TrainTimetable,
     lastSeen: string,
-) {
+): number {
     const parsedLastSeen = parseLastSeen(lastSeen);
-    if (parsedLastSeen) return calculateDelay(
+    // The delay can't be known without the location, which is different to the train being untimetabled (Infinity)
+    if (!parsedLastSeen) return NaN;
+    return calculateDelay(
         trainTimetable,
         parsedLastSeen.hours * 3600 + parsedLastSeen.minutes * 60,
         `${getStationCode(parsedLastSeen.station)}_${parsedLastSeen.platform}`,

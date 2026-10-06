@@ -15,7 +15,7 @@ export default {
     },
 
     execute: async interaction => {
-        const trn = normalizeTRN(interaction.options.get('trn').value as string);
+        const trn = normalizeTRN(interaction.options.get('trn', true).value as string);
         const trainTimetable = (await getTodaysTimetable()).trains[trn];
 
         let train: FullTrainResponse;
@@ -39,7 +39,7 @@ export default {
         }
 
         if (trainTimetable) {
-            const timetabledStatus = getExpectedTrainState(trainTimetable, secondsSinceMidnight(new Date()));
+            const timetabledStatus = getExpectedTrainState(trainTimetable, secondsSinceMidnight());
             lines.push(`It should ${renderExpectedTrainState(timetabledStatus)}.`);
         } else {
             lines.push("This train is not timetabled to run today.");
@@ -48,7 +48,14 @@ export default {
         if (train.status) {
             await interaction.reply({
                 content: lines.join('\n'),
-                embeds: [trainEmbed({ trn, date: train.lastChanged, status: train.status, timetable: trainTimetable })],
+                embeds: [
+                    trainEmbed({
+                        trn,
+                        date: train.lastChanged!,
+                        status: train.status,
+                        timetable: trainTimetable
+                    })
+                ]
             });
         } else {
             await interaction.reply(lines.join('\n'));

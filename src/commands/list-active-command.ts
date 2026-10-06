@@ -10,7 +10,7 @@ import {
 import {getTodaysTimetable} from "../cache";
 import {MSBCommand} from "./index";
 
-function listTrains(trains: string[]) {
+function listTrains(trains: string[]): string {
     return trains.length ? trains.sort().join(', ') : 'None';
 }
 
@@ -50,7 +50,7 @@ export default {
                 extraTrains.push(trn);
                 continue;
             }
-            const trainTimetable = todaysTimetable.trains[trn];
+            const trainTimetable = todaysTimetable.trains[trn]!;
             const secsOffTimetable: number[] = [];
             if (data.status.timesAPI) {
                 secsOffTimetable.push(calculateDelayFromTimesAPI(trainTimetable, data.status.timesAPI.lastEvent));

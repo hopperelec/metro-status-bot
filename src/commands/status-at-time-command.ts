@@ -39,17 +39,17 @@ export default {
         try {
             const dateOption = interaction.options.get('date')?.value as string | undefined;
             date = dateOption ? parseDateOption(dateOption) : new Date();
-            const hms = parseTimeOption(interaction.options.get('time').value as string);
+            const hms = parseTimeOption(interaction.options.get('time', true).value as string);
             date.setHours(hms.hours, hms.minutes, hms.seconds, 0);
         } catch (error) {
             await interaction.reply({
-                content: error.message,
+                content: error instanceof Error ? error.message : String(error),
                 flags: ["Ephemeral"]
             });
             return;
         }
 
-        const trn = normalizeTRN(interaction.options.get('trn').value as string);
+        const trn = normalizeTRN(interaction.options.get('trn', true).value as string);
         const afterOption = interaction.options.get('after')?.value as boolean | undefined;
 
         const [trainTimetable, train] = await Promise.all([

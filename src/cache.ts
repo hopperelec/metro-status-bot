@@ -37,7 +37,7 @@ export async function refreshCache(proxy: MetroApiClient) {
 
         refreshTodaysTimetable(),
 
-        proxy.getTrains().then(async (trainsResponse: FullTrainsResponse) => {
+        (proxy.getTrains() as Promise<FullTrainsResponse>).then(async trainsResponse => {
             lastHistoryEntries = Object.fromEntries(
                 Object.entries(trainsResponse.trains).map(([trn, train]) => {
                     return [trn, {
@@ -65,7 +65,7 @@ export function getStationCode(station: string, platform?: PlatformNumber) {
         if (platform === 3 || platform === 4) return "MTW";
     }
     for (const code of apiConstants.PASSENGER_STOPS) {
-        if (apiConstants.LOCATION_ABBREVIATIONS[code].toLowerCase() === station) {
+        if (apiConstants.LOCATION_ABBREVIATIONS[code]!.toLowerCase() === station) {
             return code;
         }
     }

@@ -1,10 +1,8 @@
-import {config} from "dotenv";
 import {Client, Events, GatewayIntentBits, MessageCreateOptions, MessagePayload, TextChannel} from "discord.js";
 import {handleInteraction, registerCommands} from "./commands";
 import {MetroApiClient} from "metro-api-client";
 import {startMonitoring} from "./monitoring";
 
-config();
 const MAIN_CHANNEL_ID = process.env.MAIN_CHANNEL_ID;
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 const PROXY_BASE_URL = process.env.PROXY_BASE_URL;
@@ -51,7 +49,7 @@ process.on('unhandledRejection', (error: Error, origin: string) => {
 });
 
 export async function updateActivity(numActive: number) {
-    client.user.setActivity(
+    client.user?.setActivity(
         `${numActive} trains`,
         { type: 3 } // Watching
     );

@@ -5,7 +5,7 @@ import {locationsMatch, parseLocation} from "../timetable";
 import {MSBCommand} from "./index";
 import {normalizeTRN, parseDateOption, parseTimeOption} from "./command-utils";
 
-function formatTime(time: number | undefined) {
+function formatTime(time: number | undefined): string {
     if (time === undefined) return '--:--:--';
     const hours = Math.floor(time / 3600);
     const minutes = Math.floor((time % 3600) / 60);
@@ -13,7 +13,7 @@ function formatTime(time: number | undefined) {
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 }
 
-function renderLocationShort(location: string) {
+function renderLocationShort(location: string): string {
     const parsedLocation = parseLocation(location);
     if (!parsedLocation) return location;
     return parsedLocation.platform !== undefined
@@ -130,7 +130,7 @@ export default {
             }
         } catch (error) {
             await interaction.reply({
-                content: error.message,
+                content: error instanceof Error ? error.message : String(error),
                 flags: ["Ephemeral"]
             });
             return;
@@ -143,7 +143,7 @@ export default {
                 date = parseDateOption(dateString);
             } catch (error) {
                 await interaction.reply({
-                    content: error.message,
+                    content: error instanceof Error ? error.message : String(error),
                     flags: ["Ephemeral"]
                 });
                 return;
@@ -206,8 +206,8 @@ export default {
         }
 
         const flattenedEntries: ({ trn: string } & TrainTimetableEntry)[] = [];
-        for (const trn of Object.keys(dayTimetable.trains)) {
-            for (const entry of dayTimetable.trains[trn]) {
+        for (const [trn,entries] of Object.entries(dayTimetable.trains)) {
+            for (const entry of entries) {
                 flattenedEntries.push({
                     trn,
                     ...entry
@@ -247,18 +247,18 @@ export default {
                 departureTime: entry.departureTime
             });
         }
-        rows.sort((a, b) => compareTimes(a.departureTime || a.arrivalTime, b.arrivalTime || b.departureTime));
+        rows.sort((a, b) => compareTimes((a.departureTime || a.arrivalTime)!, (b.arrivalTime || b.departureTime)!));
 
         const columnWidths: number[] = [];
         for (const row of rows) {
-            for (let i = 0; i < row.columns.length; i++) {
-                columnWidths[i] = Math.max(columnWidths[i] || 0, row.columns[i].length);
+            for (const [i, column] of row.columns.entries()) {
+                columnWidths[i] = Math.max(columnWidths[i] || 0,column.length);
             }
         }
         let codeblockContent = '';
         for (const row of rows) {
-            for (let i = 0; i < row.columns.length; i++) {
-                codeblockContent += row.columns[i].padEnd(columnWidths[i]);
+            for (const [i, column] of row.columns.entries()) {
+                codeblockContent += column.padEnd(columnWidths[i]!);
             }
             codeblockContent += row.rest + '\n';
         }
@@ -290,7 +290,7 @@ export default {
         if (!options.length) return [];
         if (!focusedOption.value) return options;
         const parts = focusedOption.value.split(',');
-        const start = parts.pop().trim().toLowerCase();
+        const start = parts.pop()!.trim().toLowerCase();
         const rest = parts.join(',');
         return options.filter(item => item.toLowerCase().startsWith(start))
             .map(item => rest ? `${rest},${item}` : item);

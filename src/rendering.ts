@@ -2,16 +2,17 @@ import {MAX_PLANNED_DESTINATIONS, MONUMENT_STATION_CODES} from "./constants";
 import {apiConstants, lastHeartbeat} from "./cache";
 import {EmbedBuilder} from "discord.js";
 import {
-    ActiveTrainHistoryStatus,
-    CollatedTrain, ExpectedTrainState, HeartbeatErrorPayload, HeartbeatWarningsPayload,
+    ApiType, ExpectedTrainState, GeoApiData, GeoApiEventType, HeartbeatError, HeartbeatWarning, ParsedPlatform,
     TimesApiData, TrainTimetable
 } from "metro-api-client";
 import {
-    calculateDelayFromTimesAPI,
-    calculateDelayFromTrainStatusesAPI,
-    parseLocation
+    calculateDelayFromTimesApi,
+    calculateDelayFromGeoApi,
+    parseLocationCode,
+    ParsedLocation
 } from "./timetable";
 import {alert} from "./bot";
+import {TrainStatus} from "./train-status";
 
 export interface InactiveTrainEmbedData {
     trn: string;
@@ -19,13 +20,13 @@ export interface InactiveTrainEmbedData {
 }
 
 export interface ActiveTrainEmbedData extends InactiveTrainEmbedData {
-    status: CollatedTrain | ActiveTrainHistoryStatus;
+    status: TrainStatus;
     date: Date;
 }
 
 export type TrainEmbedData = ActiveTrainEmbedData | InactiveTrainEmbedData;
 
-export function dueInToString(dueIn: number) {
+export function dueInToString(dueIn: number): string {
     switch (dueIn) {
         case -2: return "Delayed";
         case -1: return "Arrived";
@@ -35,11 +36,11 @@ export function dueInToString(dueIn: number) {
     }
 }
 
-function renderSignedNumber(value: number) {
+function renderSignedNumber(value: number): string {
     return `${value >= 0 ? '+' : ''}${value}`;
 }
 
-export function renderDelay(delay: number) {
+export function renderDelay(delay: number): string {
     if (delay === Infinity) return "untimetabled";
     if (isNaN(delay)) return "delay unknown";
     if (Math.abs(delay) <= 60) return "on time";
@@ -47,18 +48,7 @@ export function renderDelay(delay: number) {
     return `${renderSignedNumber(Math.round(delay / 60))}m`;
 }
 
-export function renderTimesAPILastEvent(lastEvent: TimesApiData["lastEvent"], trainTimetable?: TrainTimetable) {
-    const start = `${lastEvent.type.replaceAll("_", " ")} ${lastEvent.location} at ${lastEvent.time.toLocaleTimeString('en-GB')}`;
-    return trainTimetable ? `${start} (${renderDelay(calculateDelayFromTimesAPI(trainTimetable, lastEvent))})` : start;
-}
-
-export function renderTrainStatusesAPILastSeen(lastSeen: string, trainTimetable?: TrainTimetable) {
-    return trainTimetable
-        ? `${lastSeen} (${renderDelay(calculateDelayFromTrainStatusesAPI(trainTimetable, lastSeen))})`
-        : lastSeen;
-}
-
-export function trainEmbed(train: ActiveTrainEmbedData) {
+export function trainEmbed(train: ActiveTrainEmbedData): EmbedBuilder {
     const embed = new EmbedBuilder()
         .setTitle(`T${train.trn}`);
 
@@ -68,12 +58,12 @@ export function trainEmbed(train: ActiveTrainEmbedData) {
     }
     embed.setFooter({ text: footer });
 
-    if (train.status.timesAPI && train.status.trainStatusesAPI) {
-        embed.setDescription("This train is showing in both APIs. Sometimes these APIs have conflicting data.\nFields marked with ⌛ are from the times API, and fields marked with 📍 are from the train statuses API.");
+    if (train.status.timesAPI && train.status.geoAPI) {
+        embed.setDescription(`This train is showing in both APIs. Sometimes these APIs have conflicting data. Fields marked with ${API_EMOJIS.TIMES} are from the Times API, and fields marked with ${API_EMOJIS.GEO} are from the Geo API.`);
     } else if (train.status.timesAPI) {
-        embed.setDescription("This train is only showing in the times API (⌛).");
-    } else if (train.status.trainStatusesAPI) {
-        embed.setDescription("This train is only showing in the train statuses API (📍).");
+        embed.setDescription(`This train is only showing in the Times API (${API_EMOJIS.TIMES}).`);
+    } else if (train.status.geoAPI) {
+        embed.setDescription(`This train is only showing in the Geo API (${API_EMOJIS.GEO}).`);
     }
 
     if (train.status.timesAPI) {
@@ -90,11 +80,11 @@ export function trainEmbed(train: ActiveTrainEmbedData) {
         }
         embed.addFields(
             {
-                name: "⌛ Last seen",
-                value: renderTimesAPILastEvent(data.lastEvent, train.timetable)
+                name: `${API_EMOJIS.TIMES} Last seen`,
+                value: renderTimesApiLastEvent(data.lastEvent, train.timetable)
             },
             {
-                name: "⌛ Planned destinations",
+                name: `${API_EMOJIS.TIMES} Planned destinations`,
                 value: plannedDestinationsLines.join("\n")
             }
         );
@@ -110,30 +100,30 @@ export function trainEmbed(train: ActiveTrainEmbedData) {
             }
             embed.addFields(
                 {
-                    name: "⌛ Next Platforms",
+                    name: `${API_EMOJIS.TIMES} Next Platforms`,
                     value: nextPlatformsString,
                 }
             );
         }
     }
 
-    if (train.status.trainStatusesAPI) {
-        const data = train.status.trainStatusesAPI;
+    if (train.status.geoAPI) {
+        const data = train.status.geoAPI;
         embed.addFields(
             {
-                name: "📍 Current destination",
+                name: `${API_EMOJIS.GEO} Current destination`,
                 value: data.destination
             },
             {
-                name: "📍 Last seen",
-                value: renderTrainStatusesAPILastSeen(data.lastSeen, train.timetable)
+                name: `${API_EMOJIS.GEO} Last seen`,
+                value: renderGeoApiLastSeen(data.lastSeen, train.timetable)
             }
         )
     }
     return embed;
 }
 
-function prevTrainStatusEmbed(train: TrainEmbedData) {
+function prevTrainStatusEmbed(train: TrainEmbedData): EmbedBuilder {
     if ("status" in train)
         return trainEmbed(train).setTitle(`T${train.trn} (previous status)`)
     return new EmbedBuilder()
@@ -141,29 +131,37 @@ function prevTrainStatusEmbed(train: TrainEmbedData) {
         .setDescription("No previous status available.");
 }
 
-export function renderPlatform(stationCode: string, platform?: number) {
-    if (platform === undefined) return apiConstants.LOCATION_ABBREVIATIONS[stationCode] || stationCode;
-    return `${
-        MONUMENT_STATION_CODES.includes(stationCode)
-            ? "Monument"
-            : apiConstants.LOCATION_ABBREVIATIONS[stationCode] || stationCode
-    } platform ${platform}`;
+export function renderParsedPlatform(platform: ParsedPlatform): string {
+    return `${platform.station} Platform ${platform.platformNumber}`;
 }
 
 const PLATFORM_CODE_REGEX = /^(?<station>[A-Z]{3});(?<platform>[1-4])$/;
-export function renderPlatformCode(code: string) {
+export function renderPlatformCode(code: string): string {
     const parsed = code.match(PLATFORM_CODE_REGEX);
-    return parsed?.groups ? renderPlatform(parsed.groups.station!, +parsed.groups.platform!) : code;
+    return parsed?.groups ? renderParsedLocation({
+        stationCode: parsed.groups.station!,
+        platformNumber: +parsed.groups.platform!
+    }) : code;
 }
 
-export function renderLocation(location: string) {
-    const parsedLocation = parseLocation(location);
-    return parsedLocation ? renderPlatform(parsedLocation.station, parsedLocation.platform) : location;
+export function renderParsedLocation({ stationCode, platformNumber }: ParsedLocation): string {
+    if (platformNumber === undefined) return apiConstants.LOCATION_ABBREVIATIONS[stationCode] || stationCode;
+    return renderParsedPlatform({
+        station: MONUMENT_STATION_CODES.includes(stationCode)
+            ? "Monument"
+            : apiConstants.LOCATION_ABBREVIATIONS[stationCode] || stationCode,
+        platformNumber
+    });
 }
 
-export function renderExpectedTrainState(state: ExpectedTrainState, past: boolean = false) {
-    const location = renderLocation(state.location);
-    const destination = renderLocation(state.destination);
+export function renderLocationCode(location: string): string {
+    const parsedLocation = parseLocationCode(location);
+    return parsedLocation ? renderParsedLocation(parsedLocation) : location;
+}
+
+export function renderExpectedTrainState(state: ExpectedTrainState, past: boolean = false): string {
+    const location = renderLocationCode(state.location);
+    const destination = renderLocationCode(state.destination);
     let formatKey: string = state.event;
     if (location === destination) {
         if (formatKey === "APPROACHING") formatKey = "TERMINATING";
@@ -205,28 +203,30 @@ export function renderExpectedTrainState(state: ExpectedTrainState, past: boolea
         case "DEPARTED_NIS":
         case "DEPARTED_NIS_PAST":
             return `have departed empty from ${location} towards ${destination}`;
+
+        default: throw new Error(`Unrecognised expected train state: ${state.event} (inService: ${state.inService}, past: ${past})`);
     }
 }
 
 // Heartbeats
 
-function getAPIName(code: string) {
-    if (code === "timesAPI") return "the times API";
-    if (code === "trainStatusesAPI") return "the train statuses API";
-    if (code === "gateway") return "the gateway (a prerequisite of the train statuses";
+function getApiName(code: ApiType): string {
+    if (code === "TIMES") return "the Times API";
+    if (code === "GEO") return "the Geo API";
+    if (code === "GATEWAY") return "the gateway (which provides the token needed for the Times API)";
     return `an unrecognised API (${code})`;
 }
 
-export async function announceHeartbeatError(payload: HeartbeatErrorPayload) {
+export async function announceHeartbeatError(payload: HeartbeatError): Promise<void> {
     await alert({
-        content: `⚠️ An error occurred while fetching or parsing data from ${getAPIName(payload.api)}:\n` +
+        content: `⚠️ An error occurred while fetching or parsing data from ${getApiName(payload.api)}:\n` +
             `> ${payload.message}\n` +
             "-# This usually indicates a problem with or downtime of Nexus' APIs; the bot and proxy are still working fine.",
     });
 }
 
-export async function announceHeartbeatWarnings(payload: HeartbeatWarningsPayload) {
-    const apiName = getAPIName(payload.api);
+export async function announceHeartbeatWarning(payload: HeartbeatWarning): Promise<void> {
+    const apiName = getApiName(payload.api);
     await alert({
         content: `⚠️ One or more warnings were produced while parsing data from ${apiName}.\n` +
             "-# This usually indicates strange or unexpected behaviour from Nexus' APIs; the bot and proxy are still working fine.",
@@ -234,7 +234,7 @@ export async function announceHeartbeatWarnings(payload: HeartbeatWarningsPayloa
             {
                 name: "warnings.txt",
                 description: `Warnings from ${apiName}`,
-                attachment: Buffer.from(JSON.stringify(payload.warnings, null, 2))
+                attachment: Buffer.from(JSON.stringify(payload.data, null, 2))
             }
         ]
     });
@@ -242,32 +242,34 @@ export async function announceHeartbeatWarnings(payload: HeartbeatWarningsPayloa
 
 // Either API
 
-function listTrns(trns: Set<string>) {
+export const API_EMOJIS = { TIMES: "⌛", GEO: "📍" };
+
+function listTrns(trns: Set<string>): string {
     return `T${Array.from(trns).sort().join(", T")}`;
 }
 
-export async function announceTrainOnWrongDay(train: ActiveTrainEmbedData) {
+export async function announceTrainOnWrongDay(train: ActiveTrainEmbedData): Promise<void> {
     await alert({
         content: `🤔 Train T${train.trn} is active, but it isn't timetabled for today.`,
         embeds: [trainEmbed(train)]
     });
 }
 
-export async function announceTrainOnWrongDayDisappeared(train: ActiveTrainEmbedData) {
+export async function announceTrainOnWrongDayDisappeared(prevStatus: TrainEmbedData): Promise<void> {
     await alert({
-        content: `🤔 Train T${train.trn} was active despite not being timetabled for today. However, it has now disappeared. Below is it's status from before it disappeared.`,
-        embeds: [trainEmbed(train)]
+        content: `🤔 Train T${prevStatus.trn} was active despite not being timetabled for today. However, it has now disappeared. Below is it's status from before it disappeared.`,
+        embeds: [prevTrainStatusEmbed(prevStatus)]
     });
 }
 
-export async function announceTrainDuringNightHours(train: ActiveTrainEmbedData) {
+export async function announceTrainDuringNightHours(train: ActiveTrainEmbedData): Promise<void> {
     await alert({
         content: `🌙 Train T${train.trn} is active during night hours.`,
         embeds: [trainEmbed(train)]
     });
 }
 
-export async function announceECS(train: ActiveTrainEmbedData) {
+export async function announceECS(train: ActiveTrainEmbedData): Promise<void> {
     await alert({
         content: `🧐 Train T${train.trn} is showing on the Pop app. While this TRN is timetabled for today, it is not meant to be in service, so the Pop app doesn't usually show it.`,
         embeds: [trainEmbed(train)]
@@ -278,7 +280,7 @@ export async function announceUnrecognisedDestinations(
     currStatus: ActiveTrainEmbedData,
     prevStatus: TrainEmbedData,
     unrecognisedDestinations: string[]
-) {
+): Promise<void> {
     let message: string;
     if (unrecognisedDestinations.length === 1) {
         const destination = unrecognisedDestinations[0]!;
@@ -308,7 +310,7 @@ export async function announceTrainAtUnrecognisedStation(
     currStatus: ActiveTrainEmbedData,
     prevStatus: TrainEmbedData,
     station: string,
-) {
+): Promise<void> {
     const middle = station === "" ? "a blank station" : `an unrecognised station "${station}"`;
     await alert({
         content: `🤔 Train T${currStatus.trn} was last seen at ${middle}`,
@@ -316,23 +318,23 @@ export async function announceTrainAtUnrecognisedStation(
     });
 }
 
-export async function announceTrainAtUnrecognisedPlatform(train: ActiveTrainEmbedData) {
+export async function announceTrainAtUnrecognisedPlatform(train: ActiveTrainEmbedData): Promise<void> {
     await alert({
         content: `🤔 Train T${train.trn} is at an unrecognised platform`,
         embeds: [trainEmbed(train)]
     });
 }
 
-export async function announceTrainAtSouthShieldsP1(train: ActiveTrainEmbedData) {
+export async function announceTrainAtSouthShieldsP1(train: ActiveTrainEmbedData): Promise<void> {
     await alert({
-        content: `🤔 Train T${train.trn} is at South Shields platform 1.`,
+        content: `🤔 Train T${train.trn} is at South Shields Platform 1.`,
         embeds: [trainEmbed(train)]
     });
 }
 
-export async function announceTrainAtSunderlandP1orP4(train: ActiveTrainEmbedData, platform: 1 | 4) {
+export async function announceTrainAtSunderlandP1orP4(train: ActiveTrainEmbedData, platform: 1 | 4): Promise<void> {
     await alert({
-        content: `🤔 Train T${train.trn} is at Sunderland platform ${platform}, but Metro trains are currently only meant to use platforms 2 and 3.`,
+        content: `🤔 Train T${train.trn} is at Sunderland Platform ${platform}, but Metro trains are currently only meant to use platforms 2 and 3.`,
         embeds: [trainEmbed(train)]
     });
 }
@@ -340,77 +342,106 @@ export async function announceTrainAtSunderlandP1orP4(train: ActiveTrainEmbedDat
 export async function announceTrainTeleported(
     currStatus: ActiveTrainEmbedData,
     prevStatus: TrainEmbedData,
-    prevLocation: string,
-    currLocation: string
-) {
-    const [prevStation, prevPlatform] = prevLocation.split('_');
-    const [currStation, currPlatform] = currLocation.split('_');
+    prevLocationCode: string,
+    currLocationCode: string
+): Promise<void> {
     await alert({
-        content: `🌀 Train T${currStatus.trn} has teleported from ${renderPlatform(prevStation!, +prevPlatform!)} to ${renderPlatform(currStation!, +currPlatform!)}. This could indicate a TRN swap.`,
+        content: `🌀 Train T${currStatus.trn} has teleported from ${renderLocationCode(prevLocationCode)} to ${renderLocationCode(currLocationCode)}. This could indicate a TRN swap.`,
         embeds: [trainEmbed(currStatus), prevTrainStatusEmbed(prevStatus)]
     });
 }
 
-export async function announceTrainUsingJJC(currStatus: ActiveTrainEmbedData, prevStatus: TrainEmbedData) {
+export async function announceTrainUsingJJC(currStatus: ActiveTrainEmbedData, prevStatus: TrainEmbedData): Promise<void> {
     await alert({
         content: `🤔 Train T${currStatus.trn} appears to have used Jesmond Junction. It is probably not in service.`,
         embeds: [trainEmbed(currStatus), prevTrainStatusEmbed(prevStatus)]
     });
 }
 
-export async function announceAllTrainsDisappeared(trns: Set<string>) {
+export async function announceAllTrainsDisappeared(trns: Set<string>): Promise<void> {
     await alert({content: `❌ All ${trns.size} active trains have disappeared simultaneously!\n${listTrns(trns)}`});
 }
 
-export async function announceMultipleDisappearedTrains(trns: Set<string>) {
+export async function announceMultipleDisappearedTrains(trns: Set<string>): Promise<void> {
     await alert(`❌ The following ${trns.size} trains have disappeared simultaneously!\n${listTrns(trns)}`);
 }
 
-export async function announceDisappearedTrain(prevStatus: TrainEmbedData) {
+export async function announceDisappearedTrain(prevStatus: TrainEmbedData): Promise<void> {
     await alert({
         content: `❌ Train T${prevStatus.trn} has disappeared!`,
         embeds: [prevTrainStatusEmbed(prevStatus)]
     });
 }
 
-export async function announceReappearedTrain(train: ActiveTrainEmbedData) {
+export async function announceReappearedTrain(train: ActiveTrainEmbedData): Promise<void> {
     await alert({
         content: `✅ Train T${train.trn} has reappeared!`,
         embeds: [trainEmbed(train)]
     });
 }
 
-export async function announceMultipleReappearedTrains(trns: Set<string>) {
+export async function announceMultipleReappearedTrains(trns: Set<string>): Promise<void> {
     await alert(`✅ The following ${trns.size} trains have reappeared simultaneously!\n${listTrns(trns)}`);
 }
 
-export async function announceTrainAppearedLate(train: ActiveTrainEmbedData, delay: number) {
+export async function announceTrainAppearedLate(train: ActiveTrainEmbedData, delay: number): Promise<void> {
     await alert({
         content: `✅ Train T${train.trn} has appeared for the first time today, but ${Math.round(delay / 60)} minutes later than its first timetabled passenger departure`,
         embeds: [trainEmbed(train)]
     });
 }
 
-// Train statuses API
+// Geo API
+
+const GEO_API_EVENT_TYPES: Record<GeoApiEventType, string> = {
+    APPROACHING: "Approaching",
+    ARRIVED: "Arrived",
+    READY_TO_START: "Ready to start",
+    DEPARTED: "Departed",
+};
+
+/** Renders the Geo API's last seen status, in the same format as the Pop app's map */
+function renderGeoApiLastSeenStatus(lastSeen: GeoApiData["lastSeen"]): string {
+    if (typeof lastSeen === "string") return lastSeen;
+    const time = lastSeen.time.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+    return `${GEO_API_EVENT_TYPES[lastSeen.type]} ${renderParsedPlatform(lastSeen)} at ${time}`;
+}
+
+export function renderGeoApiLastSeen(lastSeen: GeoApiData["lastSeen"], trainTimetable?: TrainTimetable): string {
+    const rendered = renderGeoApiLastSeenStatus(lastSeen);
+    return trainTimetable
+        ? `${rendered} (${renderDelay(calculateDelayFromGeoApi(trainTimetable, lastSeen))})`
+        : rendered;
+}
 
 export async function announceUnparseableLastSeen(
     currStatus: ActiveTrainEmbedData,
     prevStatus: TrainEmbedData
-) {
+): Promise<void> {
     await alert({
-        content: `⚠️ Not able to parse the last seen message (from the train statuses API) for train T${currStatus.trn}.`,
+        content: `⚠️ Not able to parse the last seen message (from the Geo API) for train T${currStatus.trn}.`,
         embeds: [trainEmbed(currStatus), prevTrainStatusEmbed(prevStatus)]
     });
 }
 
 // Times API
 
+export function renderTimesApiLocation(location: string | ParsedPlatform): string {
+    return typeof location === "string" ? location : renderParsedPlatform(location);
+}
+
+/** Renders the Times API's last event, in the same format as the Pop app */
+export function renderTimesApiLastEvent(lastEvent: TimesApiData["lastEvent"], trainTimetable?: TrainTimetable): string {
+    const start = `${lastEvent.type.replaceAll("_", " ")} ${renderTimesApiLocation(lastEvent.location)} at ${lastEvent.time.toLocaleTimeString('en-GB')}`;
+    return trainTimetable ? `${start} (${renderDelay(calculateDelayFromTimesApi(trainTimetable, lastEvent))})` : start;
+}
+
 export async function announceUnparseableLastEventLocation(
     currStatus: ActiveTrainEmbedData,
     prevStatus: TrainEmbedData,
-) {
+): Promise<void> {
     await alert({
-        content: `⚠️ Not able to parse the last event location (from the times API) for train T${currStatus.trn}.`,
+        content: `⚠️ Not able to parse the last event location (from the Times API) for train T${currStatus.trn}.`,
         embeds: [trainEmbed(currStatus), prevTrainStatusEmbed(prevStatus)]
     });
 }

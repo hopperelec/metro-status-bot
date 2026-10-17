@@ -1,10 +1,9 @@
 import {
-    ActiveTrainHistoryEntry,
-    ApiConstants, compareTimes as _compareTimes, DayTimetable, FullTrainsResponse,
-    MetroApiClient, PlatformNumber,
+    ApiConstants, compareTimes as _compareTimes, DayTimetable, FullTrainsResponse, MetroApiClient, PlatformNumber,
 } from "metro-api-client";
 import {whenIsNextDay} from "./timetable";
 import {proxy, updateActivity} from "./bot";
+import {DatedTrainStatus} from "./train-status";
 
 export let lastHeartbeat: Date;
 export function setLastHeartbeat(date: Date) {
@@ -27,7 +26,7 @@ export async function getTodaysTimetable() {
 }
 
 export let apiConstants: ApiConstants;
-export let lastHistoryEntries: Record<string, Omit<ActiveTrainHistoryEntry, "active">> = {};
+export let lastHistoryEntries: Record<string, DatedTrainStatus> = {};
 export let trainsWithHistory = new Set<string>();
 
 export async function refreshCache(proxy: MetroApiClient) {
@@ -41,19 +40,16 @@ export async function refreshCache(proxy: MetroApiClient) {
             lastHistoryEntries = Object.fromEntries(
                 Object.entries(trainsResponse.trains).map(([trn, train]) => {
                     return [trn, {
-                        date: train.lastChanged,
-                        active: true,
+                        date: train.statusLastChanged.startedAt,
                         status: train.status,
                     }];
                 })
             );
-            lastHeartbeat = trainsResponse.lastChecked;
+            lastHeartbeat = trainsResponse.lastHeartbeat.startedAt;
             await updateActivity(Object.keys(trainsResponse.trains).length);
         }),
 
-        proxy.getHistorySummary().then(historySummary => {
-            trainsWithHistory = new Set(Object.keys(historySummary.trains));
-        }),
+        proxy.getTrnsWithHistory().then(trns => trainsWithHistory = new Set(trns)),
     ]);
     whenToRefreshTimetable = whenIsNextDay(lastHeartbeat);
 }

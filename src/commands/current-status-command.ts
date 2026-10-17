@@ -28,7 +28,7 @@ export default {
 
         // The embed will be sent before the stream receives the update,
         // so we set this in advance to make sure the embed shows the current time.
-        setLastHeartbeat(train.lastChecked);
+        setLastHeartbeat(train.lastHeartbeat.startedAt);
 
         let lines: string[] = [];
 
@@ -51,7 +51,7 @@ export default {
                 embeds: [
                     trainEmbed({
                         trn,
-                        date: train.lastChanged!,
+                        date: (train.statusLastChangedDuring ?? train.lastHeartbeat).startedAt,
                         status: train.status,
                         timetable: trainTimetable
                     })

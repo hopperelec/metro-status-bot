@@ -6,12 +6,12 @@ export const MAX_PLANNED_DESTINATIONS = 5; // Maximum number of planned destinat
 // For some reason, trains disappear after departing Fellgate towards a station in the shared stretch,
 // and until they reach Pelaw.
 // This defines how long such a train needs to be missing before announcing its disappearance.
-export const DEPARTED_FGT_TO_SHARED_DELAY = 5 * 60 * 1000; // 5 minutes
+export const DEPARTED_FELLGATE_TO_SHARED_DELAY = 5 * 60 * 1000; // 5 minutes
 
 export const LATE_START_THRESHOLD = 10 * 60 * 1000; // 10 minutes
 
-// The times API seems to restart at 3AM, and it can sometimes take several minutes for it to come back online.
-// During this time, the proxy will send "Unexpected end of JSON input" errors for the times API.
+// The Times API seems to restart at 3AM, and it can sometimes take several minutes for it to come back online.
+// During this time, the proxy will send "Unexpected end of JSON input" errors for the Times API.
 // This defines the time window during which we should ignore those errors.
 export const TIMES_API_RESTART_TIME = {
     // both in seconds since midnight

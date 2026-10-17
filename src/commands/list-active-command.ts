@@ -2,8 +2,8 @@ import {EmbedBuilder} from "discord.js";
 import {proxy} from "../bot";
 import {FullTrainsResponse} from "metro-api-client";
 import {
-    calculateDelayFromTimesAPI,
-    calculateDelayFromTrainStatusesAPI,
+    calculateDelayFromTimesApi,
+    calculateDelayFromGeoApi,
     getTimetabledTrains,
     secondsSinceMidnight
 } from "../timetable";
@@ -31,8 +31,8 @@ export default {
         ]);
 
         const timetabledTrains = getTimetabledTrains(todaysTimetable, secondsSinceMidnight());
-        const activeTrainsFromTimesAPI: string[] = [];
-        const activeTrainsFromTrainStatusesAPI: string[] = [];
+        const activeTrainsFromTimesApi: string[] = [];
+        const activeTrainsFromGeoApi: string[] = [];
         const delayedTrains: {
             trn: string,
             possibleDelays: number[],
@@ -41,10 +41,10 @@ export default {
         const extraTrains: string[] = [];
         for (const [trn, data] of Object.entries(activeTrains.trains)) {
             if (data.status.timesAPI) {
-                activeTrainsFromTimesAPI.push(trn);
+                activeTrainsFromTimesApi.push(trn);
             }
-            if (data.status.trainStatusesAPI) {
-                activeTrainsFromTrainStatusesAPI.push(trn);
+            if (data.status.geoAPI) {
+                activeTrainsFromGeoApi.push(trn);
             }
             if (!timetabledTrains.includes(trn)) {
                 extraTrains.push(trn);
@@ -53,10 +53,10 @@ export default {
             const trainTimetable = todaysTimetable.trains[trn]!;
             const secsOffTimetable: number[] = [];
             if (data.status.timesAPI) {
-                secsOffTimetable.push(calculateDelayFromTimesAPI(trainTimetable, data.status.timesAPI.lastEvent));
+                secsOffTimetable.push(calculateDelayFromTimesApi(trainTimetable, data.status.timesAPI.lastEvent));
             }
-            if (data.status.trainStatusesAPI) {
-                secsOffTimetable.push(calculateDelayFromTrainStatusesAPI(trainTimetable, data.status.trainStatusesAPI.lastSeen));
+            if (data.status.geoAPI) {
+                secsOffTimetable.push(calculateDelayFromGeoApi(trainTimetable, data.status.geoAPI.lastSeen));
             }
             const minsOffTimetable = [...new Set(
                 secsOffTimetable
@@ -75,12 +75,12 @@ export default {
         const embed = new EmbedBuilder()
             .addFields(
                 {
-                    name: `From times API (${activeTrainsFromTimesAPI.length})`,
-                    value: listTrains(activeTrainsFromTimesAPI)
+                    name: `From Times API (${activeTrainsFromTimesApi.length})`,
+                    value: listTrains(activeTrainsFromTimesApi)
                 },
                 {
-                    name: `From train statuses API (${activeTrainsFromTrainStatusesAPI.length})`,
-                    value: listTrains(activeTrainsFromTrainStatusesAPI)
+                    name: `From Geo API (${activeTrainsFromGeoApi.length})`,
+                    value: listTrains(activeTrainsFromGeoApi)
                 },
                 {
                     name: `Timetabled trains (${timetabledTrains.length})`,

@@ -1,7 +1,7 @@
 import {apiConstants, compareTimes, getTodaysTimetable} from "../cache";
 import {DayTimetable, TrainTimetableEntry} from "metro-api-client";
 import {proxy} from "../bot";
-import {locationsMatch, parseLocation} from "../timetable";
+import {entryEndTime, entryStartTime, locationsMatch, parseLocationCode} from "../timetable";
 import {MSBCommand} from "./index";
 import {normalizeTRN, parseDateOption, parseTimeOption} from "./command-utils";
 
@@ -14,11 +14,11 @@ function formatTime(time: number | undefined): string {
 }
 
 function renderLocationShort(location: string): string {
-    const parsedLocation = parseLocation(location);
+    const parsedLocation = parseLocationCode(location);
     if (!parsedLocation) return location;
-    return parsedLocation.platform !== undefined
-        ? `${parsedLocation.station} P${parsedLocation.platform}`
-        : parsedLocation.station;
+    return parsedLocation.platformNumber !== undefined
+        ? `${parsedLocation.stationCode} P${parsedLocation.platformNumber}`
+        : parsedLocation.stationCode;
 }
 
 export default {
@@ -186,8 +186,8 @@ export default {
                     (inService !== undefined && entry.inService !== inService) ||
                     (onlyTermini && entry.arrivalTime !== undefined && entry.departureTime !== undefined) ||
                     (types && !types.has(entry.type)) ||
-                    (startTime !== undefined && compareTimes(entry.departureTime || entry.arrivalTime, startTime) < 0) ||
-                    (endTime !== undefined && compareTimes(entry.arrivalTime || entry.departureTime, endTime) > 0)
+                    (startTime !== undefined && compareTimes(entryEndTime(entry), startTime) < 0) ||
+                    (endTime !== undefined && compareTimes(entryStartTime(entry), endTime) > 0)
                 ));
                 if (!filteredTimetable.length) continue;
                 if (limit) {
@@ -247,7 +247,7 @@ export default {
                 departureTime: entry.departureTime
             });
         }
-        rows.sort((a, b) => compareTimes((a.departureTime || a.arrivalTime)!, (b.arrivalTime || b.departureTime)!));
+        rows.sort((a, b) => compareTimes(entryStartTime(a), entryStartTime(b)));
 
         const columnWidths: number[] = [];
         for (const row of rows) {

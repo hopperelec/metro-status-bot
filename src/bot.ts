@@ -1,3 +1,4 @@
+import "./timezone"; // Must be imported first
 import {Client, Events, GatewayIntentBits, MessageCreateOptions, MessagePayload, TextChannel} from "discord.js";
 import {handleInteraction, registerCommands} from "./commands";
 import {MetroApiClient} from "metro-api-client";

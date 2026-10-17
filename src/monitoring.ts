@@ -1,5 +1,5 @@
 import {
-    DEPARTED_FGT_TO_SHARED_DELAY,
+    DEPARTED_FELLGATE_TO_SHARED_DELAY,
     LATE_START_THRESHOLD,
     MULTIPLE_TRAINS_THRESHOLD,
     TIMES_API_RESTART_TIME
@@ -14,7 +14,7 @@ import {
     announceTrainOnWrongDay,
     announceTrainDuringNightHours,
     announceHeartbeatError,
-    announceHeartbeatWarnings,
+    announceHeartbeatWarning,
     announceAllTrainsDisappeared,
     announceMultipleDisappearedTrains,
     announceMultipleReappearedTrains,
@@ -23,7 +23,11 @@ import {
     announceTrainAtSouthShieldsP1,
     announceECS,
     announceTrainAtSunderlandP1orP4,
-    announceTrainTeleported, announceTrainUsingJJC, announceTrainAppearedLate, ActiveTrainEmbedData
+    announceTrainTeleported,
+    announceTrainUsingJJC,
+    announceTrainAppearedLate,
+    ActiveTrainEmbedData,
+    renderTimesApiLocation
 } from "./rendering";
 import {proxy, updateActivity} from "./bot";
 import {
@@ -31,34 +35,35 @@ import {
     trainsWithHistory, setLastHeartbeat, lastHeartbeat, getTodaysTimetable
 } from "./cache";
 import {
-    ActiveTrainHistoryEntry,
-    ActiveTrainHistoryStatus,
     CollatedTrain,
-    FullNewTrainsHistoryPayload,
-    HeartbeatErrorPayload,
-    ParsedLastSeen,
-    ParsedTimesAPILocation,
-    parseLastSeen,
-    parseTimesAPILocation,
+    GeoApiData,
+    HeartbeatError,
+    HeartbeatTimes,
+    MetroApiError,
+    ParsedGeoApiLastSeen,
+    ParsedPlatform,
     PlatformNumber,
+    SubscriptionRequest,
     TimesApiData,
-    TrainHistoryEntry,
-    TrainStatusesApiData,
 } from "metro-api-client";
-import {getExpectedTrainState, isNightHours, secondsSinceMidnight, whenIsNextDay} from "./timetable";
+import {
+    getExpectedTrainState,
+    isNightHours,
+    parsedPlatformToLocationCode,
+    secondsSinceMidnight,
+    whenIsNextDay
+} from "./timetable";
 import {isInSharedStretch} from "./utils";
 import {isAdjacent, isJesmondJunction} from "./network-graph";
+import {DatedTrainStatus, TrainStatus} from "./train-status";
 
-type TrainCheckData<Status = ActiveTrainHistoryStatus> = {
+type TrainCheckData<Status = CollatedTrain> = {
     trn: string;
     curr: {
         date: Date,
         status: Status
     };
-    prev?: {
-        date: Date,
-        status: ActiveTrainHistoryStatus
-    };
+    prev?: DatedTrainStatus;
 }
 
 type ActiveTrainAnnouncer = (fullEmbedData: ActiveTrainEmbedData) => Promise<void>;
@@ -68,58 +73,44 @@ const missingTrains = new Map<string, {
     whenToForget: Date;
 } | {
     announced: false;
-    prevStatus: Omit<ActiveTrainHistoryEntry, "active">;
+    prevStatus: DatedTrainStatus;
     whenToAnnounce: Date;
 }>;
 
 async function getFullEmbedData({ trn, curr }: TrainCheckData): Promise<ActiveTrainEmbedData> {
-    const timetablePromise = getTodaysTimetable();
-
-    let fullStatus: CollatedTrain;
-    if (curr.status.timesAPI) {
-        // ActiveHistoryStatus is missing `nextPlatforms`, so we need to fetch it
-        const response = await proxy.getTrain(trn, {
-            props: ["status.timesAPI.nextPlatforms"],
-        }) as {
-            status: {
-                timesAPI: {
-                    nextPlatforms: TimesApiData["nextPlatforms"]
-                }
-            }
-        };
-        fullStatus = {
-            ...curr.status,
-            timesAPI: {
-                ...curr.status.timesAPI,
-                ...response.status.timesAPI,
-            },
-        };
-    } else {
-        // Nothing to add
-        fullStatus = curr.status as CollatedTrain;
-    }
-
     return {
         trn,
         date: curr.date,
-        status: fullStatus,
-        timetable: (await timetablePromise).trains[trn],
+        status: curr.status,
+        timetable: (await getTodaysTimetable()).trains[trn],
     };
+}
+
+/** Gets where the Geo API last saw a train, if it could be parsed */
+function getGeoApiLastSeen(geoApiData?: Pick<GeoApiData, "lastSeen">): ParsedGeoApiLastSeen | undefined {
+    const lastSeen = geoApiData?.lastSeen;
+    return typeof lastSeen === "string" ? undefined : lastSeen;
+}
+
+/** Gets the platform of a train's last event on the Times API, if it could be parsed */
+function getTimesApiPlatform(timesApiData?: Pick<TimesApiData, "lastEvent">): ParsedPlatform | undefined {
+    const location = timesApiData?.lastEvent.location;
+    return typeof location === "string" ? undefined : location;
 }
 
 function checkPlatform(
     stationName: string,
-    platform: PlatformNumber,
+    platformNumber: PlatformNumber,
     time: number
 ) {
-    switch (platform) {
+    switch (platformNumber) {
         case 1:
             if (stationName === 'South Hylton') return 'unrecognised';
             if (stationName === 'Sunderland') return 'sun-p14';
             if (stationName === 'South Shields') {
-                // For some reason, any trains at South Shields platform 2 after midnight appear at platform 1 on the API.
-                // This is clearly a bug in the API because trains at platform 2 at midnight will seemingly teleport to platform 1 with the same arrival time.
-                // So don't announce trains at South Shields platform 1 after midnight.
+                // For some reason, any trains at South Shields Platform 2 after midnight appear at Platform 1 on the API.
+                // This is clearly a bug in the API because trains at Platform 2 at midnight will seemingly teleport to Platform 1 with the same arrival time.
+                // So don't announce trains at South Shields Platform 1 after midnight.
                 if (time >= apiConstants.NEW_DAY_HOUR * 3600) return 'sss-p1';
             }
             return;
@@ -137,34 +128,31 @@ function checkPlatform(
     }
 }
 
-// Checks which depend on the times API, but don't depend on the statuses API
-async function timesAPIChecks(
+// Checks which depend on the Times API, but don't depend on the Geo API
+async function timesApiChecks(
     checkData: TrainCheckData<{ timesAPI: TimesApiData }>,
-    timesAPILocation?: ParsedTimesAPILocation
+    timesApiPlatform?: ParsedPlatform
 ): Promise<ActiveTrainAnnouncer[]> {
-    if (!timesAPILocation) {
+    if (!timesApiPlatform) {
         const { trn, prev } = checkData;
         return [fullEmbedData => announceUnparseableLastEventLocation(fullEmbedData, { trn, ...prev })];
     }
     return [];
 }
 
-// Checks which depend on the train statuses API, but don't depend on the times API
-async function trainStatusesChecks(
-    checkData: TrainCheckData<{ trainStatusesAPI: TrainStatusesApiData }>,
-    parsedLastSeen?: ParsedLastSeen
+// Checks which depend on the Geo API, but don't depend on the Times API
+async function geoApiChecks(
+    checkData: TrainCheckData<{ geoAPI: GeoApiData }>,
+    geoApiLastSeen?: ParsedGeoApiLastSeen
 ): Promise<ActiveTrainAnnouncer[]> {
-    if (!parsedLastSeen) {
+    if (!geoApiLastSeen) {
         const { trn, prev } = checkData;
         return [fullEmbedData => announceUnparseableLastSeen(fullEmbedData, { trn, ...prev })];
     }
     return [];
 }
 
-async function checkIfTimetabled(
-    checkData: TrainCheckData,
-    parsedLastSeen?: ParsedLastSeen
-) {
+async function checkIfTimetabled(checkData: TrainCheckData, geoApiLastSeen?: ParsedGeoApiLastSeen) {
     const { trn, curr, prev } = checkData;
 
     // Only announce when the train first becomes active
@@ -175,50 +163,39 @@ async function checkIfTimetabled(
 
     if (curr.status.timesAPI && isNightHours(trainTimetable, curr.status.timesAPI.lastEvent.time)) return "night-hours";
 
-    if (parsedLastSeen) {
-        const dateInStatuses = new Date(curr.date);
-        dateInStatuses.setHours(parsedLastSeen.hours);
-        dateInStatuses.setMinutes(parsedLastSeen.minutes);
-        if (parsedLastSeen.hours - curr.date.getHours() >= 12) {
-            dateInStatuses.setDate(dateInStatuses.getDate() - 1);
-        }
-        if (isNightHours(trainTimetable, dateInStatuses)) return "night-hours";
-    }
+    if (geoApiLastSeen && isNightHours(trainTimetable, geoApiLastSeen.time)) return "night-hours";
 
     if (trainTimetable.every(entry => !entry.inService)) return "ecs";
 }
 
 function shouldAnnounceUnrecognisedStation(
     {prev}: TrainCheckData,
-    parsedLastSeen?: ParsedLastSeen,
-    timesAPILocation?: ParsedTimesAPILocation
+    geoApiPlatform?: ParsedPlatform,
+    timesApiPlatform?: ParsedPlatform
 ) {
-    if (parsedLastSeen?.station !== timesAPILocation?.station) return false;
-    if (parsedLastSeen) {
-        const prevStatus = prev?.status?.trainStatusesAPI;
+    // If the APIs disagree on the station, it isn't clear which one to announce
+    if (geoApiPlatform && timesApiPlatform && geoApiPlatform.station !== timesApiPlatform.station) return false;
+    if (geoApiPlatform) {
+        const prevGeoApiPlatform = getGeoApiLastSeen(prev?.status?.geoAPI);
         if (
-            !getStationCode(parsedLastSeen.station) && (
-                !prevStatus ||
-                parsedLastSeen.station !== parseLastSeen(prevStatus.lastSeen)?.station
-            )
+            !getStationCode(geoApiPlatform.station) &&
+            geoApiPlatform.station !== prevGeoApiPlatform?.station
         ) return true;
     }
-    if (timesAPILocation) {
-        const prevStatus = prev?.status?.timesAPI;
+    if (timesApiPlatform) {
+        const prevTimesApiPlatform = getTimesApiPlatform(prev?.status?.timesAPI);
         if (
-            !getStationCode(timesAPILocation.station) && (
-                !prevStatus ||
-                timesAPILocation.station !== parseTimesAPILocation(prevStatus.lastEvent.location)?.station
-            )
+            !getStationCode(timesApiPlatform.station) &&
+            timesApiPlatform.station !== prevTimesApiPlatform?.station
         ) return true;
     }
     return false;
 }
 
-function getUniqueDestinations(status?: ActiveTrainHistoryStatus) {
+function getUniqueDestinations(status?: TrainStatus) {
     const destinations = new Set<string>();
-    if (status?.trainStatusesAPI) {
-        destinations.add(status.trainStatusesAPI.destination);
+    if (status?.geoAPI) {
+        destinations.add(status.geoAPI.destination);
     }
     if (status?.timesAPI) {
         for (const destination of status.timesAPI.plannedDestinations) {
@@ -242,81 +219,59 @@ function getNewUnrecognisedDestinations({curr, prev}: TrainCheckData) {
     return newUnrecognisedDestinations;
 }
 
+type TimedPlatform = ParsedPlatform & { time: Date };
+
+type Teleport = { currLocationCode: string; prevLocationCode: string };
+
+/** Checks whether a train moved between two non-adjacent platforms */
+function teleportBetween(curr: TimedPlatform, prev: TimedPlatform): Teleport | undefined {
+    const currLocationCode = parsedPlatformToLocationCode(curr);
+    if (!currLocationCode) return;
+    const prevLocationCode = parsedPlatformToLocationCode(prev);
+    if (!prevLocationCode) return;
+    if (currLocationCode === prevLocationCode) return;
+
+    const timeDelta = curr.time.getTime() - prev.time.getTime();
+    const isAdjacentMove =
+        (timeDelta >= 0 && isAdjacent(prevLocationCode, currLocationCode)) ||
+        (timeDelta <= 0 && isAdjacent(currLocationCode, prevLocationCode));
+    if (!isAdjacentMove) return { currLocationCode, prevLocationCode };
+}
+
 function hasTeleported(
-    parsedLastSeen?: ParsedLastSeen,
-    timesAPILocation?: ParsedTimesAPILocation,
-    timesAPIDate?: Date,
-    prevParsedLastSeen?: ParsedLastSeen,
-    prevTimesAPILocation?: ParsedTimesAPILocation,
-    prevTimesAPIDate?: Date,
-): { currLocation: string; prevLocation: string } | false {
-    // This code is a complete mess, but I have no idea how to clean it
-    if (parsedLastSeen && prevParsedLastSeen) {
-        const stationCode = getStationCode(parsedLastSeen.station);
-        const prevStationCode = getStationCode(prevParsedLastSeen.station);
-        if (stationCode && prevStationCode) {
-            const currLocation = `${stationCode}_${parsedLastSeen.platform}`;
-            const prevLocation = `${prevStationCode}_${prevParsedLastSeen.platform}`;
-            if (currLocation !== prevLocation) {
-                const currMins = parsedLastSeen.hours * 60 + parsedLastSeen.minutes;
-                const prevMins = prevParsedLastSeen.hours * 60 + prevParsedLastSeen.minutes;
-                if (currMins === prevMins) {
-                    if (!(isAdjacent(prevLocation, currLocation) || isAdjacent(currLocation, prevLocation))) {
-                        return { currLocation, prevLocation };
-                    }
-                } else if (
-                    (currMins >= prevMins && currMins - prevMins < 720) ||
-                    (currMins < prevMins && currMins + 1440 - prevMins < 720)
-                ) {
-                    if (!isAdjacent(prevLocation, currLocation)) {
-                        return { currLocation, prevLocation };
-                    }
-                } else {
-                    if (!isAdjacent(currLocation, prevLocation)) {
-                        return { currLocation, prevLocation };
-                    }
-                }
-            }
-        }
+    geoApiLastSeen?: ParsedGeoApiLastSeen,
+    timesApiPlatform?: ParsedPlatform,
+    timesApiTime?: Date,
+    prevGeoApiLastSeen?: ParsedGeoApiLastSeen,
+    prevTimesApiPlatform?: ParsedPlatform,
+    prevTimesApiTime?: Date,
+): Teleport | false {
+    if (geoApiLastSeen && prevGeoApiLastSeen) {
+        const teleport = teleportBetween(geoApiLastSeen, prevGeoApiLastSeen);
+        if (teleport) return teleport;
     }
-    if (timesAPILocation && timesAPIDate && prevTimesAPILocation && prevTimesAPIDate) {
-        const stationCode = getStationCode(timesAPILocation.station);
-        const prevStationCode = getStationCode(prevTimesAPILocation.station);
-        if (stationCode && prevStationCode) {
-            const currLocation = `${stationCode}_${timesAPILocation.platform}`;
-            const prevLocation = `${prevStationCode}_${prevTimesAPILocation.platform}`;
-            if (currLocation !== prevLocation) {
-                if (timesAPIDate.getTime() === prevTimesAPIDate.getTime()) {
-                    if (!(isAdjacent(prevLocation, currLocation) || isAdjacent(currLocation, prevLocation))) {
-                        return { currLocation, prevLocation };
-                    }
-                } else if (timesAPIDate.getTime() > prevTimesAPIDate.getTime()) {
-                    if (!isAdjacent(prevLocation, currLocation)) {
-                        return { currLocation, prevLocation };
-                    }
-                } else {
-                    if (!isAdjacent(currLocation, prevLocation)) {
-                        return { currLocation, prevLocation };
-                    }
-                }
-            }
-        }
+    if (timesApiPlatform && timesApiTime && prevTimesApiPlatform && prevTimesApiTime) {
+        const teleport = teleportBetween(
+            { ...timesApiPlatform, time: timesApiTime },
+            { ...prevTimesApiPlatform, time: prevTimesApiTime }
+        );
+        if (teleport) return teleport;
     }
     return false;
 }
 
 // Checks which can be done with either API
-async function eitherAPIChecks(
+async function eitherApiChecks(
     checkData: TrainCheckData,
-    parsedLastSeen?: ParsedLastSeen,
-    timesAPILocation?: ParsedTimesAPILocation
+    geoApiLastSeen?: ParsedGeoApiLastSeen,
+    timesApiPlatform?: ParsedPlatform
 ): Promise<ActiveTrainAnnouncer[]> {
     const { trn, curr, prev } = checkData;
     const announcements: ActiveTrainAnnouncer[] = [];
     let shouldCheckPlatform = true;
 
     const checkPromises: Promise<void>[] = [
-        checkIfTimetabled(checkData, parsedLastSeen).then((shouldBeActive) => {
+        checkIfTimetabled(checkData, geoApiLastSeen).then((shouldBeActive) => {
             if (shouldBeActive === "wrong-day") {
                 announcements.push(announceTrainOnWrongDay)
             } else if (shouldBeActive === "night-hours") {
@@ -334,11 +289,11 @@ async function eitherAPIChecks(
                 // ... and if it is significantly later than its first timetabled passenger departure
                 const trainTimetable = dayTimetable.trains[trn];
                 if (!trainTimetable) return;
-                const firstInServiceEntry = trainTimetable.find(
+                const firstInServiceDepartureTime = trainTimetable.find(
                     entry => entry.inService && entry.departureTime !== undefined
-                );
-                if (!firstInServiceEntry) return;
-                const delay = secondsSinceMidnight(curr.date) - firstInServiceEntry.departureTime;
+                )?.departureTime;
+                if (firstInServiceDepartureTime === undefined) return;
+                const delay = secondsSinceMidnight(curr.date) - firstInServiceDepartureTime;
                 if (delay > LATE_START_THRESHOLD) {
                     announcements.push(fullEmbedData => announceTrainAppearedLate(fullEmbedData, delay));
                 }
@@ -355,32 +310,35 @@ async function eitherAPIChecks(
         ));
     }
 
-    if (shouldAnnounceUnrecognisedStation(checkData, parsedLastSeen, timesAPILocation)) {
+    if (shouldAnnounceUnrecognisedStation(checkData, geoApiLastSeen, timesApiPlatform)) {
         announcements.push((fullEmbedData) => announceTrainAtUnrecognisedStation(
             fullEmbedData,
             { trn, ...prev },
-            (parsedLastSeen?.station ?? timesAPILocation?.station)!
+            (geoApiLastSeen?.station ?? timesApiPlatform?.station)!
         ));
-        // Don't check the platform if the station is unrecognized
+        // Don't check the platform if the station is unrecognised
         shouldCheckPlatform = false;
     }
 
     // Don't check the platform if each API is reporting a different platform
-    if (parsedLastSeen && timesAPILocation && parsedLastSeen.platform !== timesAPILocation.platform) {
+    if (geoApiLastSeen && timesApiPlatform && geoApiLastSeen.platformNumber !== timesApiPlatform.platformNumber) {
         shouldCheckPlatform = false;
     }
 
     if (prev?.status) {
-        const teleportInfo = hasTeleported(
-            parsedLastSeen,
-            timesAPILocation,
+        const prevGeoApiLastSeen = getGeoApiLastSeen(prev.status.geoAPI);
+        const prevTimesApiPlatform = getTimesApiPlatform(prev.status.timesAPI);
+
+        const teleport = hasTeleported(
+            geoApiLastSeen,
+            timesApiPlatform,
             curr.status.timesAPI?.lastEvent.time,
-            prev.status.trainStatusesAPI ? parseLastSeen(prev.status.trainStatusesAPI.lastSeen) : undefined,
-            prev.status.timesAPI ? parseTimesAPILocation(prev.status.timesAPI.lastEvent.location) : undefined,
+            prevGeoApiLastSeen,
+            prevTimesApiPlatform,
             prev.status.timesAPI?.lastEvent.time
         );
-        if (teleportInfo) {
-            if (isJesmondJunction(teleportInfo.prevLocation, teleportInfo.currLocation)) {
+        if (teleport) {
+            if (isJesmondJunction(teleport.prevLocationCode, teleport.currLocationCode)) {
                 announcements.push(fullEmbedData => announceTrainUsingJJC(
                     fullEmbedData,
                     { trn, ...prev }
@@ -389,42 +347,40 @@ async function eitherAPIChecks(
                 announcements.push(fullEmbedData => announceTrainTeleported(
                     fullEmbedData,
                     { trn, ...prev },
-                    teleportInfo.prevLocation,
-                    teleportInfo.currLocation
+                    teleport.prevLocationCode,
+                    teleport.currLocationCode
                 ));
             }
         }
 
         // Don't check the platform if the location hasn't changed
         if (prev.status.timesAPI) {
-            if (curr.status.timesAPI?.lastEvent.location === prev.status.timesAPI.lastEvent.location) {
+            if (
+                curr.status.timesAPI &&
+                renderTimesApiLocation(curr.status.timesAPI.lastEvent.location) ===
+                    renderTimesApiLocation(prev.status.timesAPI.lastEvent.location)
+            ) {
                 shouldCheckPlatform = false;
             }
-        } else if (prev.status.trainStatusesAPI) {
-            const parsedPrevLastSeen = parseLastSeen(prev.status.trainStatusesAPI.lastSeen);
+        } else if (prev.status.geoAPI) {
             if (
-                parsedLastSeen?.station === parsedPrevLastSeen?.station &&
-                parsedLastSeen?.platform === parsedPrevLastSeen?.platform
+                geoApiLastSeen?.station === prevGeoApiLastSeen?.station &&
+                geoApiLastSeen?.platformNumber === prevGeoApiLastSeen?.platformNumber
             ) shouldCheckPlatform = false;
         }
     }
 
-    const platformNumber = timesAPILocation?.platform ?? parsedLastSeen?.platform;
-    const stationName = parsedLastSeen?.station ?? timesAPILocation?.station;
+    const platformNumber = timesApiPlatform?.platformNumber ?? geoApiLastSeen?.platformNumber;
+    const stationName = geoApiLastSeen?.station ?? timesApiPlatform?.station;
     // If neither API's location could be parsed, there's nothing to check (and it is already announced as unparseable)
     if (shouldCheckPlatform && platformNumber !== undefined && stationName !== undefined) {
         const platformCheck = checkPlatform(
             stationName,
-            platformNumber,
+            platformNumber as PlatformNumber,
             secondsSinceMidnight(checkData.curr.date)
         );
         if (platformCheck === "sss-p1") {
-            // For some reason, any trains at South Shields platform 2 after midnight appear at platform 1 on the API.
-            // This is clearly a bug in the API because trains at platform 2 at midnight will seemingly teleport to platform 1 with the same arrival time.
-            // So don't announce trains at South Shields platform 1 after midnight.
-            if (curr.date.getHours() >= apiConstants.NEW_DAY_HOUR) {
-                announcements.push(announceTrainAtSouthShieldsP1);
-            }
+            announcements.push(announceTrainAtSouthShieldsP1);
         } else if (platformCheck === 'sun-p14') {
             announcements.push(fullEmbedData => announceTrainAtSunderlandP1orP4(fullEmbedData, platformNumber as 1 | 4));
         } else if (platformCheck === "unrecognised") {
@@ -440,30 +396,28 @@ async function checkActiveTrain(checkData: TrainCheckData) {
     const status = checkData.curr.status;
     const checkPromises: Promise<ActiveTrainAnnouncer[]>[] = [];
 
-    let parsedLastSeen: ParsedLastSeen | undefined;
-    if (status.trainStatusesAPI) {
-        parsedLastSeen = parseLastSeen(status.trainStatusesAPI.lastSeen);
+    const geoApiLastSeen = getGeoApiLastSeen(status.geoAPI);
+    if (status.geoAPI) {
         checkPromises.push(
-            trainStatusesChecks(
-                checkData as TrainCheckData<{ trainStatusesAPI: TrainStatusesApiData }>,
-                parsedLastSeen
+            geoApiChecks(
+                checkData as TrainCheckData<{ geoAPI: GeoApiData }>,
+                geoApiLastSeen
             )
         );
     }
 
-    let timesAPILocation: ParsedTimesAPILocation | undefined;
+    const timesApiPlatform = getTimesApiPlatform(status.timesAPI);
     if (status.timesAPI) {
-        timesAPILocation = parseTimesAPILocation(status.timesAPI.lastEvent.location);
         checkPromises.push(
-            timesAPIChecks(
+            timesApiChecks(
                 checkData as TrainCheckData<{ timesAPI: TimesApiData }>,
-                timesAPILocation
+                timesApiPlatform
             )
         );
     }
 
-    if (status.timesAPI || status.trainStatusesAPI) {
-        checkPromises.push(eitherAPIChecks(checkData, parsedLastSeen, timesAPILocation));
+    if (status.timesAPI || status.geoAPI) {
+        checkPromises.push(eitherApiChecks(checkData, geoApiLastSeen, timesApiPlatform));
     }
 
     const announcements = (await Promise.all(checkPromises)).flat();
@@ -473,7 +427,7 @@ async function checkActiveTrain(checkData: TrainCheckData) {
     }
 }
 
-async function handleDisappearedTrain(trn: string, prev: Omit<ActiveTrainHistoryEntry, "active">) {
+async function handleDisappearedTrain(trn: string, prev?: DatedTrainStatus) {
     const trainTimetable = (await getTodaysTimetable()).trains[trn];
     if (trainTimetable) {
         if (getExpectedTrainState(trainTimetable, secondsSinceMidnight(lastHeartbeat)).inService) {
@@ -514,70 +468,77 @@ async function checkMissingTrains() {
     );
 }
 
-function isDepartedFGTtoShared(status: ActiveTrainHistoryStatus) {
-    if (
-        status.timesAPI?.lastEvent.location.startsWith("Fellgate Platform ") &&
-        status.timesAPI?.lastEvent.type === "DEPARTED" &&
-        isInSharedStretch(getStationCode(status.timesAPI?.plannedDestinations[0]!.name))
-    ) return true;
-    if (!status.trainStatusesAPI) return false;
-    const parsedLastSeen = parseLastSeen(status.trainStatusesAPI.lastSeen);
-    return parsedLastSeen?.station === "FGT" &&
-        parsedLastSeen.state === "Departed" &&
-        isInSharedStretch(getStationCode(status.trainStatusesAPI.destination))
+function isDepartedFellgateToShared(status: TrainStatus): boolean {
+    return (
+        status.timesAPI !== undefined &&
+        typeof status.timesAPI.lastEvent.location !== "string" &&
+        status.timesAPI.lastEvent.location.station === "Fellgate" &&
+        status.timesAPI.lastEvent.type === "DEPARTED" &&
+        status.timesAPI.plannedDestinations[0] &&
+        isInSharedStretch(getStationCode(status.timesAPI.plannedDestinations[0].name))
+    ) || (
+        status.geoAPI !== undefined &&
+        typeof status.geoAPI.lastSeen !== "string" &&
+        status.geoAPI.lastSeen.station === "Fellgate" &&
+        status.geoAPI.lastSeen.type === "DEPARTED" &&
+        isInSharedStretch(getStationCode(status.geoAPI.destination))
+    )
 }
 
-async function onNewTrainsHistory(payload: FullNewTrainsHistoryPayload) {
-    setLastHeartbeat(payload.date);
-    if (Object.keys(payload.trains).length === 0) return;
+/** Gets a train's status from the heartbeat before a time, for when it isn't already known */
+async function getStatusBefore(trn: string, date: Date): Promise<DatedTrainStatus | undefined> {
+    const snapshot = await proxy.getSnapshot(new Date(date.getTime() - 1), { trns: [trn] });
+    if (!snapshot) return;
+    const status = { timesAPI: snapshot.timesApiTrains[trn], geoAPI: snapshot.geoApiTrains[trn] };
+    if (!status.timesAPI && !status.geoAPI) return;
+    return { date: snapshot.heartbeat.startedAt, status };
+}
+
+/** How trains changed during a heartbeat */
+interface TrainChanges {
+    heartbeat: HeartbeatTimes;
+    /** The new status of each train which became active or whose status changed, by TRN */
+    changedTrains: Record<string, CollatedTrain>;
+    /** TRNs of trains which are no longer active */
+    inactiveTrains: Set<string>;
+}
+
+async function onTrainChanges(payload: TrainChanges) {
+    const date = payload.heartbeat.startedAt;
+    setLastHeartbeat(date);
+    if (Object.keys(payload.changedTrains).length === 0 && payload.inactiveTrains.size === 0) return;
 
     const numberOfPreviouslyActiveTrains = Object.keys(lastHistoryEntries).length;
 
-    const updatedActiveTrains: Record<string, ActiveTrainHistoryStatus> = {};
     const disappearedTrains: {
         trn: string,
-        prev: Omit<ActiveTrainHistoryEntry, "active">,
+        prev?: DatedTrainStatus,
     }[] = []
     const reappearedTrains: {
         trn: string,
-        curr: Omit<ActiveTrainHistoryEntry, "active">,
+        curr: DatedTrainStatus,
     }[] = [];
-    await Promise.all(
-        Object.entries(payload.trains).map(async ([trn, trainData]) => {
-            const historyEntry = {date: payload.date, ...trainData} as TrainHistoryEntry;
-            if (historyEntry.active) {
-                const activeHistoryStatus = historyEntry.status;
-                await checkActiveTrain({
-                    trn,
-                    curr: historyEntry,
-                    prev: lastHistoryEntries[trn]
-                });
-                lastHistoryEntries[trn] = {
-                    date: payload.date,
-                    status: activeHistoryStatus
-                };
-                trainsWithHistory.add(trn);
-                updatedActiveTrains[trn] = activeHistoryStatus;
-                if (missingTrains.has(trn)) {
-                    reappearedTrains.push({ trn, curr: historyEntry });
-                }
-            } else {
-                let prev = lastHistoryEntries[trn];
-                if (!prev) {
-                    // This can occur if the bot was restarted between the previous entry and it going missing
-                    const response = await proxy.getTrainHistory(trn, {
-                        time: { to: payload.date },
-                        limit: 1,
-                        active: true,
-                        props: ["extract"],
-                    }) as { extract: [ActiveTrainHistoryEntry] };
-                    prev = response.extract[0];
-                }
-                disappearedTrains.push({ trn, prev });
-                delete lastHistoryEntries[trn];
+    await Promise.all([
+        ...Object.entries(payload.changedTrains).map(async ([trn, status]) => {
+            const curr = { date, status };
+            await checkActiveTrain({
+                trn,
+                curr,
+                prev: lastHistoryEntries[trn]
+            });
+            lastHistoryEntries[trn] = curr;
+            trainsWithHistory.add(trn);
+            if (missingTrains.has(trn)) {
+                reappearedTrains.push({ trn, curr });
             }
+        }),
+        ...[...payload.inactiveTrains].map(async trn => {
+            // The previous status can be unknown if the bot was restarted between it changing and the train going missing
+            const prev = lastHistoryEntries[trn] ?? await getStatusBefore(trn, date);
+            disappearedTrains.push({ trn, prev });
+            delete lastHistoryEntries[trn];
         })
-    );
+    ]);
 
     const promises: Promise<void>[] = [];
     if (disappearedTrains.length >= MULTIPLE_TRAINS_THRESHOLD) {
@@ -589,12 +550,12 @@ async function onNewTrainsHistory(payload: FullNewTrainsHistoryPayload) {
         );
     } else {
         for (const train of disappearedTrains) {
-            if (isDepartedFGTtoShared(train.prev.status)) {
-                // See comment on `DEPARTED_FGT_TO_SHARED_DELAY` for explanation
+            if (train.prev && isDepartedFellgateToShared(train.prev.status)) {
+                // See comment on `DEPARTED_FELLGATE_TO_SHARED_DELAY` for explanation
                 missingTrains.set(train.trn, {
                     announced: false,
                     prevStatus: train.prev,
-                    whenToAnnounce: new Date(train.prev.date.getTime() + DEPARTED_FGT_TO_SHARED_DELAY)
+                    whenToAnnounce: new Date(train.prev.date.getTime() + DEPARTED_FELLGATE_TO_SHARED_DELAY)
                 });
                 continue;
             }
@@ -636,16 +597,16 @@ async function onNewTrainsHistory(payload: FullNewTrainsHistoryPayload) {
 const ongoingErrors = new Set<string>();
 const lastErrors = new Set<string>();
 
-function shouldAnnounceError(error: HeartbeatErrorPayload) {
+function shouldAnnounceError(error: HeartbeatError) {
     if (ongoingErrors.has(error.message)) return false;
-    if (error.api !== "timesAPI") return true;
+    if (error.api !== "TIMES") return true;
     if (error.message === "Unexpected token '<', \"<!DOCTYPE \"... is not valid JSON") {
         // This is usually a Cloudflare "Timed out" error page.
         // This happens relatively often, so just ignore it.
         return false;
     }
     if (error.message === "Unexpected end of JSON input") {
-        const time = secondsSinceMidnight(error.date);
+        const time = secondsSinceMidnight(error.heartbeat.startedAt);
         if (time >= TIMES_API_RESTART_TIME.from && time <= TIMES_API_RESTART_TIME.to) {
             return false;
         }
@@ -653,9 +614,17 @@ function shouldAnnounceError(error: HeartbeatErrorPayload) {
     return true;
 }
 
+const SUBSCRIPTIONS: SubscriptionRequest[] = [
+    { id: "trains", topic: "trains" },
+    { id: "errors", topic: "heartbeat-errors" },
+    { id: "warnings", topic: "heartbeat-warnings" },
+    // Each train is sent as a separate event, so we need the heartbeat events to know when all the trains have been sent
+    { id: "heartbeats", topic: "heartbeats" },
+];
+
 export async function startMonitoring() {
     await refreshCache(proxy);
-    console.log("Connecting to stream...");
+
     let connectedOnce = false;
     let currentlyConnected = false;
     async function setConnected() {
@@ -668,45 +637,106 @@ export async function startMonitoring() {
             connectedOnce = true;
         }
     }
-    proxy.streamHistory({
-        async onNewTrainHistoryEntries(payload: FullNewTrainsHistoryPayload) {
-            await Promise.all([
-                setConnected(),
-                onNewTrainsHistory(payload)
-            ]);
-            for (const error of ongoingErrors) {
-                if (!lastErrors.has(error)) {
-                    ongoingErrors.delete(error);
-                }
-            }
-            lastErrors.clear();
-        },
-        async onHeartbeatError(payload) {
-            const promises: Promise<void>[] = [setConnected()];
-            lastErrors.add(payload.message);
-            if (shouldAnnounceError(payload)) {
-                ongoingErrors.add(payload.message)
-                promises.push(announceHeartbeatError(payload));
-            }
-            await Promise.all(promises);
-        },
-        async onHeartbeatWarnings(payload) {
-            await Promise.all([
-                setConnected(),
-                announceHeartbeatWarnings(payload)
-            ]);
-        },
-        onConnect() {
-            // This gets called if any response is received, even if it's an error page,
-            // so wait until some valid data is received before setting currentlyConnected
-        },
-        onDisconnect() {
-            // This gets called repeatedly if an error page is received,
-            // so only log it if we were definitely connected previously
-            if (currentlyConnected) {
-                currentlyConnected = false;
-                console.log("Stream disconnected, trying to reconnect...");
+
+    let currentToken: string | undefined;
+    let stream: { close(): void } | undefined;
+
+    async function connect(): Promise<void> {
+        stream?.close();
+        stream = undefined;
+        currentToken = undefined;
+        console.log("Creating subscription token...");
+        try {
+            const { token } = await proxy.createSubscriptionToken(SUBSCRIPTIONS);
+            currentToken = token;
+            stream = streamForToken(token);
+        } catch (e) {
+            console.error("Failed to create subscription token, retrying in 10 seconds:", e);
+            setTimeout(connect, 10 * 1000);
+        }
+    }
+
+    /** Checks whether the token is still valid and, if not, reconnects */
+    async function checkToken(token: string): Promise<void> {
+        try {
+            await proxy.getSubscriptions(token);
+        } catch (e) {
+            // Other errors (e.g. the proxy being unreachable) are left to the stream to retry.
+            // Several checks can be pending at once, since the stream keeps retrying, so only the first should reconnect.
+            if (e instanceof MetroApiError && e.status === 404 && token === currentToken) {
+                console.log("Subscription token no longer exists");
+                await connect();
             }
         }
-    })
+    }
+
+    function streamForToken(token: string): { close(): void } {
+        console.log("Connecting to stream...");
+        // Train changes are collected until the heartbeat ends, so that they can be handled together
+        let pendingChanges: TrainChanges | undefined;
+        return proxy.streamSubscriptions(token, {
+            onTrain(message) {
+                if (pendingChanges?.heartbeat.startedAt.getTime() !== message.heartbeat.startedAt.getTime()) {
+                    pendingChanges = { heartbeat: message.heartbeat, changedTrains: {}, inactiveTrains: new Set() };
+                }
+                if (message.status) {
+                    pendingChanges.changedTrains[message.trn] = message.status;
+                } else {
+                    pendingChanges.inactiveTrains.add(message.trn);
+                }
+            },
+            async onHeartbeatEnd({ heartbeat }) {
+                const changes: TrainChanges = pendingChanges?.heartbeat.startedAt.getTime() === heartbeat.startedAt.getTime()
+                    ? pendingChanges
+                    : { heartbeat, changedTrains: {}, inactiveTrains: new Set() };
+                pendingChanges = undefined;
+                await Promise.all([
+                    setConnected(),
+                    onTrainChanges(changes)
+                ]);
+                for (const error of ongoingErrors) {
+                    if (!lastErrors.has(error)) {
+                        ongoingErrors.delete(error);
+                    }
+                }
+                lastErrors.clear();
+            },
+            async onHeartbeatError(payload) {
+                const promises: Promise<void>[] = [setConnected()];
+                lastErrors.add(payload.message);
+                if (shouldAnnounceError(payload)) {
+                    ongoingErrors.add(payload.message)
+                    promises.push(announceHeartbeatError(payload));
+                }
+                await Promise.all(promises);
+            },
+            async onHeartbeatWarning(payload) {
+                await Promise.all([
+                    setConnected(),
+                    announceHeartbeatWarning(payload)
+                ]);
+            },
+            onStreamClosed({ reason }) {
+                // Nothing else should be using the token, so this is unexpected
+                console.warn(`Stream was closed by the proxy (${reason})`);
+                currentlyConnected = false;
+                connect().then();
+            },
+            onConnect() {
+                // This gets called if any response is received, even if it's an error page,
+                // so wait until some valid data is received before setting currentlyConnected
+            },
+            onDisconnect() {
+                // This gets called repeatedly if an error page is received,
+                // so only log it if we were definitely connected previously
+                if (currentlyConnected) {
+                    currentlyConnected = false;
+                    console.log("Stream disconnected, trying to reconnect...");
+                }
+                checkToken(token).then();
+            }
+        });
+    }
+
+    await connect();
 }

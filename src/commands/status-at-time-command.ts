@@ -59,14 +59,25 @@ export default {
                     : proxy.getTimetable({ date, trns: [trn] })
             ).then(dayTimetable => dayTimetable.trains[trn]),
 
-            proxy.getTrainHistory(trn, {
-                time: afterOption ? { from: date } : { to: date },
-                limit: 1,
-            }).then(history => history.extract[0])
+            proxy.getSnapshot(date, {
+                trns: [trn],
+                matchStrategy: afterOption ? 'after' : 'before',
+            }).then(snapshot => {
+                if (!snapshot) return;
+                const status = {
+                    timesAPI: snapshot.timesApiTrains[trn],
+                    geoAPI: snapshot.geoApiTrains[trn]
+                };
+                if (!status.timesAPI && !status.geoAPI) return;
+                return {
+                    date: (snapshot.statusLastChanged[trn] ?? snapshot.heartbeat).startedAt,
+                    status
+                };
+            })
         ]);
 
         let lines: string[] = [];
-        if (train?.active) {
+        if (train) {
             lines.push(`This train was active, and it's status at the specified time is shown below.`);
         } else {
             lines.push(`No train with TRN ${trn} was showing on the Pop app at the specified time.`);
@@ -78,7 +89,7 @@ export default {
             lines.push("This train was not timetabled to run on that day.");
         }
 
-        if (train && train.active) {
+        if (train) {
             await interaction.reply({
                 content: lines.join('\n'),
                 embeds: [trainEmbed({ trn, date: train.date, status: train.status, timetable: trainTimetable })],

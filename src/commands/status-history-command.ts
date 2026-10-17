@@ -3,14 +3,20 @@ import {apiConstants, getTodaysTimetable, trainsWithHistory} from "../cache";
 import {HISTORY_PAGE_ROWS} from "../constants";
 import {proxy} from "../bot";
 import {
-    parseLastSeen,
-    PropsFilter,
+    GeoApiData,
+    HistoricTimesApiData,
     TimeFilter,
-    TimesApiData,
-    TrainHistoryOptions,
+    TrainDataApi,
+    TrainHistoryEntry,
     TrainTimetable
 } from "metro-api-client";
-import {renderPlatform, renderTimesAPILastEvent, renderTrainStatusesAPILastSeen} from "../rendering";
+import {
+    API_EMOJIS,
+    renderGeoApiLastSeen,
+    renderParsedPlatform,
+    renderTimesApiLastEvent,
+    renderTimesApiLocation
+} from "../rendering";
 import {MSBCommand} from "./index";
 import {isToday} from "../utils";
 import {normalizeTRN, parseDateOption, parseTimeOption, TRN_OPTION} from "./command-utils";
@@ -20,276 +26,331 @@ interface RenderedEntry {
     rendered: string;
 }
 
-interface FetchResult {
-    veryFirstEntry: Date;
-    entries: RenderedEntry[];
+const TRAIN_DATA_APIS: TrainDataApi[] = ["TIMES", "GEO"];
+type ApiStatus = { TIMES: HistoricTimesApiData; GEO: GeoApiData };
+/** The history fetched from each API, which is missing for APIs that aren't included */
+type ApiPeriods = { [Api in TrainDataApi]?: TrainHistoryEntry<ApiStatus[Api]>[] };
+const API_NAMES = { TIMES: "Times API", GEO: "Geo API" };
+
+type Render<Data> = (data: Data, trainTimetable?: TrainTimetable) => string;
+
+/** How to get, compare and render a property from an API's data */
+type ApiProperty<Status, Data> = {
+    get: (status: Status) => Data;
+    equals?: (a: Data, b: Data) => boolean;
+    // Strings are shown as they are by default
+} & ([Data] extends [string] ? { render?: Render<Data> } : { render: Render<Data> });
+
+/** Type checks an API's property, since the data type can't be checked once it's in `PROPERTY_CHOICES` */
+function apiProperty<Status, Data>(property: ApiProperty<Status, Data>) {
+    return property;
 }
+
+type ApiProperties = { [Api in TrainDataApi]: ApiProperty<ApiStatus[Api], any> };
 
 interface PropertyChoice {
     displayName: string;
+    /** How to get the property from each API's data, or undefined for whether the train was active */
+    apis?: ApiProperties;
+    /** Whether the property can be shown from both APIs at once */
+    combinable: boolean;
 }
 
-interface FetchPropertyChoice extends PropertyChoice {
-    customFetch: (trn: string, time: TimeFilter) => Promise<FetchResult | undefined>;
-}
-
-interface IterativePropertyChoice<OutputData> extends PropertyChoice {
-    statusProps?: PropsFilter;
-    limit?: number;
-    get?: (data: any) => OutputData;
-    equals?: (a: OutputData, b: OutputData) => boolean;
-    render?: (data: OutputData, trainTimetable?: TrainTimetable) => string;
-}
-
-function iterativePropertyChoice<OutputData>(choice: IterativePropertyChoice<OutputData>) {
-    return choice;
-}
-
-const PROPERTY_CHOICES: Record<string, FetchPropertyChoice | IterativePropertyChoice<any>> = {
+const PROPERTY_CHOICES: Record<string, PropertyChoice> = {
     active: {
         displayName: "Active?",
-        async customFetch(trn, time) {
-            const history = await proxy.getTrainHistory(trn, {
-                time,
-                limit: HISTORY_PAGE_ROWS,
-                active: false,
-                props: ["extract.date","extract.active","summary.firstEntry"]
-            }) as {
-                summary: { firstEntry: Date; };
-                extract: {
-                    date: Date;
-                    active: boolean;
-                }[]
-            };
-            if (history.extract.length) return {
-                veryFirstEntry: history.summary.firstEntry,
-                entries: history.extract.map(entry => ({
-                    date: entry.date,
-                    rendered: entry.active ? "Active" : "Inactive"
-                }))
-            };
+        combinable: true
+    },
+    destination: {
+        displayName: "Destination",
+        combinable: true,
+        apis: {
+            TIMES: apiProperty({
+                get: (status: HistoricTimesApiData) => status.plannedDestinations[0]?.name ?? "*No planned destinations*"
+            }),
+            GEO: apiProperty({
+                get: (status: GeoApiData) => status.destination
+            })
         }
     },
-    destination: iterativePropertyChoice({
-        displayName: "Destination",
-        statusProps: ["timesAPI.plannedDestinations.name", "trainStatusesAPI.destination"],
-        get(data: {
-            timesAPI?: { plannedDestinations: { name: string }[] },
-            trainStatusesAPI?: { destination: string }
-        }) {
-            return {
-                timesAPI: data.timesAPI?.plannedDestinations[0]?.name,
-                trainStatusesAPI: data.trainStatusesAPI?.destination
-            };
-        },
-        equals(a, b) {
-            return a.timesAPI === b.timesAPI && a.trainStatusesAPI === b.trainStatusesAPI
-        },
-        render({ timesAPI, trainStatusesAPI }) {
-            if (timesAPI === trainStatusesAPI) return timesAPI!;
-            if (timesAPI && trainStatusesAPI) return `Times API: ${timesAPI}, Train Statuses API: ${trainStatusesAPI}`;
-            if (timesAPI) return `Times API: ${timesAPI}`;
-            return `Train Statuses API: ${trainStatusesAPI}`;
+    lastSeen: {
+        displayName: "Last seen",
+        // Each API's last seen status is too different to show together
+        combinable: false,
+        apis: {
+            TIMES: apiProperty({
+                get: (status: HistoricTimesApiData) => status.lastEvent,
+                equals: (a, b) =>
+                    a.type === b.type &&
+                    renderTimesApiLocation(a.location) === renderTimesApiLocation(b.location) &&
+                    a.time.getTime() === b.time.getTime(),
+                render: (lastEvent, trainTimetable) => renderTimesApiLastEvent(lastEvent, trainTimetable)
+            }),
+            GEO: apiProperty({
+                get: (status: GeoApiData) => status.lastSeen,
+                equals: (a, b) => JSON.stringify(a) === JSON.stringify(b),
+                render: (lastSeen, trainTimetable) => renderGeoApiLastSeen(lastSeen, trainTimetable)
+            })
         }
-    }),
-    "lastSeen.timesAPI": iterativePropertyChoice({
-        displayName: "Times API last seen",
-        statusProps: ["timesAPI.lastEvent"],
-        get(data: { timesAPI?: { lastEvent: TimesApiData["lastEvent"] } }) {
-            return data.timesAPI?.lastEvent
-        },
-        equals(a, b) {
-            return a?.type === b?.type && a?.location === b?.location && a?.time.getTime() === b?.time.getTime()
-        },
-        render(data, trainTimetable) {
-            return data ? renderTimesAPILastEvent(data, trainTimetable) : "*Not showing in the times API*";
+    },
+    platform: {
+        displayName: "Platform",
+        combinable: true,
+        // Both APIs' platforms are rendered the same way, so that they can be compared
+        apis: {
+            TIMES: apiProperty({
+                get(status: HistoricTimesApiData) {
+                    return renderTimesApiLocation(status.lastEvent.location);
+                }
+            }),
+            GEO: apiProperty({
+                get(status: GeoApiData) {
+                    return typeof status.lastSeen === "string"
+                        ? "*Couldn't parse the last seen status*"
+                        : renderParsedPlatform(status.lastSeen);
+                }
+            })
         }
-    }),
-    "platform.timesAPI": iterativePropertyChoice({
-        displayName: "Times API platform",
-        statusProps: ["timesAPI.lastEvent.location"],
-        get(data: { timesAPI?: { lastEvent: { location: string } } }) {
-            return data.timesAPI?.lastEvent.location
-        },
-        render(data) {
-            return data ?? "*Not showing in the times API*";
-        }
-    }),
-    "lastSeen.trainStatusesAPI": iterativePropertyChoice({
-        displayName: "Train Statuses API last seen",
-        statusProps: ["trainStatusesAPI.lastSeen"],
-        get(data: { trainStatusesAPI?: { lastSeen: string } }) {
-            return data.trainStatusesAPI?.lastSeen;
-        },
-        render(data, trainTimetable) {
-            return data ? renderTrainStatusesAPILastSeen(data, trainTimetable) : "*Not showing in the train statuses API*";
-        }
-    }),
-    "platform.trainStatusesAPI": iterativePropertyChoice({
-        displayName: "Train Statuses API platform",
-        statusProps: ["trainStatusesAPI.lastSeen"],
-        get(data: { trainStatusesAPI?: { lastSeen: string } }) {
-            if (!data.trainStatusesAPI?.lastSeen) return "*Not showing in the train statuses API*";
-            const parsedLastSeen = parseLastSeen(data.trainStatusesAPI.lastSeen);
-            if (parsedLastSeen) return renderPlatform(parsedLastSeen.station, parsedLastSeen.platform);
-            return "*Couldn't parse the last seen status*";
-        }
-    })
+    },
 };
 
 function formatDate(date: Date): string {
     return date.toLocaleString("en-GB", {
-        timeZone: "Europe/London",
         dateStyle: "short",
         timeStyle: "medium"
     });
 }
 
-function compareData(historyProperty: IterativePropertyChoice<unknown>, a: unknown, b: unknown) {
-    if (historyProperty.equals) {
-        if (a === undefined) return b === undefined;
-        if (b === undefined) return false;
-        return historyProperty.equals(a, b);
+function isInTimeFilter(date: Date, time: TimeFilter): boolean {
+    return !(
+        ('from' in time && date < time.from) ||
+        ('to' in time && date > time.to)
+    );
+}
+
+/** Each time the APIs which the train is active in changed */
+async function fetchActiveEntries(trn: string, apis: TrainDataApi[], time: TimeFilter): Promise<RenderedEntry[]> {
+    const response = await proxy.getTrainsAvailability({
+        trns: [trn],
+        apis,
+        time,
+        // Each range has up to two entries, so this is always enough
+        limit: HISTORY_PAGE_ROWS * apis.length
+    });
+
+    // When each API's ranges started and ended
+    const changes = apis
+        .flatMap(api => (response.trains[trn]?.[api] ?? []).flatMap(range => range.end
+            ? [{ date: range.start, api, isActive: true }, { date: range.end, api, isActive: false }]
+            : [{ date: range.start, api, isActive: true }]
+        ))
+        // Ends are applied before starts at the same time, in case an API's ranges are adjacent
+        .sort((a, b) => a.date.getTime() - b.date.getTime() || +a.isActive - +b.isActive);
+
+    const entries: RenderedEntry[] = [];
+    const activeApis = new Set<TrainDataApi>();
+    let previous = "";
+    for (const [i, change] of changes.entries()) {
+        if (change.isActive) activeApis.add(change.api);
+        else activeApis.delete(change.api);
+
+        // Changes at the same time are shown together
+        if (changes[i + 1]?.date.getTime() === change.date.getTime()) continue;
+
+        const rendered =
+            !activeApis.size ? "Inactive" :
+            apis.length === 1 ? "Active" :
+            `Active in ${
+                TRAIN_DATA_APIS
+                    .filter(api => activeApis.has(api))
+                    .map(api => `${API_EMOJIS[api]} ${API_NAMES[api]}`)
+                    .join(" and ")
+            }`;
+        if (rendered === previous) continue;
+        previous = rendered;
+
+        // Ranges include all the data which overlaps the time filter, so may start or end outside of it
+        if (isInTimeFilter(change.date, time)) entries.push({ date: change.date, rendered });
     }
+    return entries;
+}
+
+function isEqual<Data>(property: ApiProperty<any, Data>, a: Data, b: Data): boolean {
+    if (property.equals && a !== undefined && b !== undefined) return property.equals(a, b);
     return a === b;
 }
 
-async function filterAndRenderEntries(
-    trn: string,
-    historyProperty: IterativePropertyChoice<unknown>,
-    extract: { date: Date; status: any }[],
-    isVeryFirstEntry: boolean = true,
-    prevData: unknown = undefined,
-) {
+function renderData<Data>(property: ApiProperty<any, Data>, data: Data, trainTimetable?: TrainTimetable): string {
+    return property.render?.(data, trainTimetable) ?? data as string;
+}
+
+/** A change to an API's data, where undefined data means the train became inactive in it */
+interface DataChange {
+    date: Date;
+    api: TrainDataApi;
+    data: unknown;
+}
+
+function getDataChanges<Api extends TrainDataApi>(
+    // Generic so that TypeScript knows `property[api]` and `periods[api]` are for the same API.
+    api: Api,
+    property: ApiProperties,
+    periods: ApiPeriods,
+    isLastPeriodKnown: boolean,
+    time: TimeFilter
+): DataChange[] {
+    const apiPeriods = periods[api];
+    if (!apiPeriods) return [];
+    apiPeriods.sort((a, b) => a.startHeartbeat.startedAt.getTime() - b.startHeartbeat.startedAt.getTime());
+
+    const changes: DataChange[] = [];
+    for (const [i, period] of apiPeriods.entries()) {
+        changes.push({ date: period.startHeartbeat.startedAt, api, data: property[api].get(period.status) });
+        // This isn't known for the last period if later periods haven't been fetched yet
+        const nextPeriod = apiPeriods[i + 1];
+        const end = period.endHeartbeat?.startedAt;
+        if (
+            end &&
+            isInTimeFilter(end, time) && (
+                nextPeriod
+                    ? nextPeriod.startHeartbeat.startedAt.getTime() !== end.getTime()
+                    : isLastPeriodKnown
+            )
+        ) {
+            changes.push({ date: end, api, data: undefined });
+        }
+    }
+    return changes;
+}
+
+/**
+ * Each time the property changed in any of the APIs, or the train became inactive in all of them.
+ * The first entry is always shown, even if it didn't change from the data before it.
+ */
+function getPropertyChanges(
+    apis: TrainDataApi[],
+    property: ApiProperties,
+    periods: ApiPeriods,
+    isLastPeriodKnown: boolean,
+    time: TimeFilter,
+    todaysTimetable?: TrainTimetable
+): RenderedEntry[] {
+    const changes = apis
+        .flatMap(api => getDataChanges(api, property, periods, isLastPeriodKnown, time))
+        .sort((a, b) => a.date.getTime() - b.date.getTime());
+
     const entries: RenderedEntry[] = [];
-    let isFirstSubEntry = true;
-    let firstData = undefined;
-    for (const entry of extract) {
-        let rendered: string;
-        if (entry.status === undefined) {
-            isFirstSubEntry = false;
-            if (isVeryFirstEntry) {
-                isVeryFirstEntry = false;
-            } else if (prevData === undefined) {
-                continue;
-            }
-            rendered = "Inactive";
-            prevData = undefined;
-        } else {
-            const currData = historyProperty.get ? historyProperty.get(entry.status) : entry.status;
-            if (isFirstSubEntry) {
-                isFirstSubEntry = false;
-                firstData = currData;
-            }
-            if (isVeryFirstEntry) {
-                isVeryFirstEntry = false;
-            } else if (compareData(historyProperty, prevData, currData)) {
-                continue;
-            }
-            rendered = historyProperty.render ? historyProperty.render(
-                currData,
-                isToday(entry.date) ? (await getTodaysTimetable()).trains[trn] : undefined
-            ) : `${currData}`;
-            prevData = currData;
+    // Each API's current data, which is undefined while the train is inactive in it
+    const current = new Map<TrainDataApi, unknown>();
+    let previous: Map<TrainDataApi, unknown> | undefined;
+    for (const [i, change] of changes.entries()) {
+        current.set(change.api, change.data);
+        // Changes during the same heartbeat are shown together
+        if (changes[i + 1]?.date.getTime() === change.date.getTime()) continue;
+        if (previous && apis.every(api => isEqual(property[api], previous!.get(api), current.get(api)))) continue;
+        previous = new Map(current);
+
+        const trainTimetable = isToday(change.date) ? todaysTimetable : undefined;
+        const rendered = new Map<TrainDataApi, string>();
+        for (const [api, data] of current) {
+            if (data !== undefined) rendered.set(api, renderData(property[api], data, trainTimetable));
         }
-        entries.push({
-            date: entry.date,
-            rendered,
-        });
+        entries.push({ date: change.date, rendered: renderEntry(rendered, apis.length > 1) });
     }
-    return { entries, firstData, lastData: prevData };
+    return entries;
 }
 
-async function defaultFetch(
+/** Renders a property from each API, which is only shown once if they're the same */
+function renderEntry(renderedData: Map<TrainDataApi, string>, isMultipleApis: boolean): string {
+    if (!renderedData.size) return "*Inactive*";
+    const values = new Set(renderedData.values());
+    if (
+        !isMultipleApis ||
+        (renderedData.size === TRAIN_DATA_APIS.length && values.size === 1)
+    ) return [...values][0]!;
+    return TRAIN_DATA_APIS
+        .filter(api => renderedData.has(api))
+        .map(api => `${API_EMOJIS[api]} ${renderedData.get(api)}`)
+        .join(" ");
+}
+
+/**
+ * Each time the property changed in any of the APIs, or the train became inactive in all of them.
+ * The history only has an entry each time any of an API's data changes, so pages are fetched until there are enough
+ *  changes to the property. More than needed are fetched, since the first entry is always shown even if it didn't
+ *  change from the entry before it, which hasn't been fetched.
+ */
+async function fetchPropertyEntries(
     trn: string,
-    time: TrainHistoryOptions["time"],
-    historyProperty: IterativePropertyChoice<unknown>
-): Promise<FetchResult | undefined> {
-    // By default, we repeatedly fetch `limit` entries until we have `HISTORY_PAGE_ROWS`.
+    property: ApiProperties,
+    apis: TrainDataApi[],
+    time: TimeFilter
+): Promise<RenderedEntry[]> {
+    const todaysTimetable = (await getTodaysTimetable()).trains[trn];
+    // History is fetched from `time.from` if it is specified, otherwise backwards from `time.to`
+    const isTo = !('from' in time);
 
-    const isTo = time === undefined || 'to' in time;
-
-    const props = ["extract.date"];
-    if (historyProperty.statusProps) {
-        for (const prop of historyProperty.statusProps) {
-            props.push(`extract.status.${prop}`);
-        }
-    }
-
-    const limit = historyProperty.limit
-        ? Math.min(historyProperty.limit, apiConstants.MAX_HISTORY_REQUEST_LIMIT)
-        : apiConstants.MAX_HISTORY_REQUEST_LIMIT;
-    const firstHistory = await proxy.getTrainHistory(trn, {
-        time,
-        limit,
-        props: ["summary.firstEntry", "summary.lastEntry", ...props]
-    }) as {
-        summary: {
-            firstEntry: Date;
-            lastEntry: Date;
-        };
-        extract: { date: Date; status: any }[]
-    };
-    if (!firstHistory.extract.length) return;
-
-    let extract = firstHistory.extract;
-    let prevResult = await filterAndRenderEntries(trn, historyProperty, extract);
-    let entries = prevResult.entries;
+    const periods: ApiPeriods = {};
+    for (const api of apis) periods[api] = [];
+    let pageTime = time;
     while (true) {
-        if (entries.length >= HISTORY_PAGE_ROWS) break;
-        if (isTo) {
-            const extractTime = extract[0]!.date.getTime();
-            if (extractTime <= firstHistory.summary.firstEntry.getTime()) break;
-            time = {to: new Date(extractTime - 1)};
-        } else {
-            const lastTime = extract[extract.length - 1]!.date.getTime();
-            if (lastTime >= firstHistory.summary.lastEntry.getTime()) break;
-            time = {from: new Date(lastTime + 1)}
-        }
-        const nextHistory = await proxy.getTrainHistory(trn, {time, limit, props}) as {
-            extract: { date: Date; status: any }[]
-        };
-        extract = nextHistory.extract;
-        if (!extract.length) break; // This could happen if old entries were purged
-        const currResult = await filterAndRenderEntries(trn, historyProperty, extract, false, isTo ? undefined : prevResult.lastData);
-        if (isTo) {
-            if (compareData(historyProperty, currResult.lastData, prevResult.firstData)) {
-                entries.shift();
-            }
-            entries.unshift(...currResult.entries);
-        } else {
-            entries.push(...currResult.entries);
-        }
-        prevResult = currResult;
-    }
+        const response = await proxy.getTrainsHistory({
+            trns: [trn],
+            apis,
+            time: pageTime,
+            limit: apiConstants.MAX_HISTORY_REQUEST_LIMIT
+        });
 
-    if (entries.length > HISTORY_PAGE_ROWS) {
-        if (isTo) {
-            entries = entries.slice(-HISTORY_PAGE_ROWS);
-        } else {
-            entries = entries.slice(0, HISTORY_PAGE_ROWS);
-        }
-    }
+        const history = response.trains[trn];
+        periods.TIMES?.push(...history?.timesAPI ?? []);
+        periods.GEO?.push(...history?.geoAPI ?? []);
 
-    return {
-        entries,
-        veryFirstEntry: firstHistory.summary.firstEntry
-    };
+        const isComplete = response.truncatedTo === null;
+        const entries = getPropertyChanges(apis, property, periods, isTo || isComplete, time, todaysTimetable);
+        if (isComplete || entries.length > HISTORY_PAGE_ROWS) return entries;
+
+        pageTime = isTo ? { to: response.truncatedTo! } : { ...time, from: response.truncatedTo! };
+    }
 }
 
+/** When the train was first active in any of the APIs */
+async function getFirstActive(trn: string, apis: TrainDataApi[]): Promise<Date | undefined> {
+    const response = await proxy.getTrainsAvailability({
+        trns: [trn],
+        apis,
+        time: { from: new Date(0) },
+        // If this was 1, then the APIs' first ranges would be omitted if they started at the same time, since the
+        //  limit truncates the time window rather than individual ranges
+        limit: apis.length
+    });
+    const starts = apis.flatMap(api => response.trains[trn]?.[api]?.[0]?.start ?? []);
+    return starts.length ? new Date(Math.min(...starts.map(start => start.getTime()))) : undefined;
+}
+
+/**
+ * Gets a page of a train's history.
+ * @param trn The train's TRN
+ * @param selection The property's key, optionally followed by `.` and a specific API
+ * @param range Which entries to show
+ */
 async function getPage(
-    trn: string, historyPropertyName: string, range: string = "last"
+    trn: string, selection: string, range: string = "last"
 ): Promise<BaseMessageOptionsWithPoll> {
-    const historyProperty = PROPERTY_CHOICES[historyPropertyName];
-    if (!historyProperty) {
+    const [propertyKey, api] = selection.split(".") as [string, TrainDataApi | undefined];
+    const historyProperty = PROPERTY_CHOICES[propertyKey];
+    if (!historyProperty || (api ? !TRAIN_DATA_APIS.includes(api) : !historyProperty.combinable)) {
         // Somehow, the property was "last" one time.
         // The only way I was able to reproduce this was by passing a TRN of `123:last`.
         // However, I doubt that this is what actually caused it.
         // So, in case it happens again and to help with debugging, I'll log all the parameters.
-        console.error(`Invalid property: ${historyPropertyName}`);
-        console.log(`getPage("${trn}", "${historyPropertyName}", "${range}")`);
-        return { content: `Invalid property: ${historyPropertyName}` };
+        console.error(`Invalid property: ${selection}`);
+        console.log(`getPage("${trn}", "${selection}", "${range}")`);
+        return { content: `Invalid property: ${selection}` };
     }
+    const apis = api ? [api] : TRAIN_DATA_APIS;
+    const displayName = api
+        ? `${API_NAMES[api]} ${historyProperty.displayName.toLowerCase()}`
+        : historyProperty.displayName;
 
     let time: TimeFilter;
     let timeDescription: string;
@@ -318,25 +379,28 @@ async function getPage(
         throw new Error(`Invalid range: ${range}`);
     }
 
-    let fetchResult: {
-        veryFirstEntry: Date
-        entries: RenderedEntry[]
-    } | undefined;
+    let entries: RenderedEntry[];
+    let firstActive: Date | undefined;
     try {
-        fetchResult = "customFetch" in historyProperty
-            ? await historyProperty.customFetch(trn, time)
-            : await defaultFetch(trn, time, historyProperty);
+        [entries, firstActive] = await Promise.all([
+            historyProperty.apis
+                ? fetchPropertyEntries(trn, historyProperty.apis, apis, time)
+                : fetchActiveEntries(trn, apis, time),
+            getFirstActive(trn, apis)
+        ]);
+        // History is fetched from `time.from` if it is specified, otherwise backwards from `time.to`
+        entries = 'from' in time ? entries.slice(0, HISTORY_PAGE_ROWS) : entries.slice(-HISTORY_PAGE_ROWS);
     } catch (error) {
         // This is a band-aid fix.
         // Ideally, different types of errors should be handled differently.
         // However, that will require changes to the proxy.
-        console.error(`Error fetching history for TRN ${trn} and property ${historyPropertyName}:`, error);
+        console.error(`Error fetching history for TRN ${trn} and property ${selection}:`, error);
         return {
             content: `Error fetching history: ${error instanceof Error ? error.message : error}`,
         };
     }
 
-    const buttonIdPrefix = `history:${trn}:${historyPropertyName}`;
+    const buttonIdPrefix = `history:${trn}:${selection}`;
     const prevButton = new ButtonBuilder()
         .setLabel("◀️")
         .setStyle(ButtonStyle.Primary);
@@ -344,15 +408,17 @@ async function getPage(
         .setLabel("▶️")
         .setStyle(ButtonStyle.Primary);
 
-    const lines = [`**Train T${trn} history - ${historyProperty.displayName} - ${timeDescription}**`];
-    if (fetchResult?.entries.length) {
-        for (const entry of fetchResult.entries) {
+    const lines = [`**Train T${trn} history - ${displayName} - ${timeDescription}**`];
+    const firstEntry = entries[0];
+    const lastEntry = entries.at(-1);
+    if (firstEntry && lastEntry) {
+        for (const entry of entries) {
             lines.push(`- [${formatDate(entry.date)}] ${entry.rendered}`)
         }
         prevButton
-            .setCustomId(`${buttonIdPrefix}:...${fetchResult.entries[0]!.date.getTime() - 1}`)
-            .setDisabled(fetchResult.veryFirstEntry.getTime() >= fetchResult.entries[0]!.date.getTime());
-        nextButton.setCustomId(`${buttonIdPrefix}:${fetchResult.entries[fetchResult.entries.length - 1]!.date.getTime() + 1}...`);
+            .setCustomId(`${buttonIdPrefix}:...${firstEntry.date.getTime() - 1}`)
+            .setDisabled(!firstActive || firstActive >= firstEntry.date);
+        nextButton.setCustomId(`${buttonIdPrefix}:${lastEntry.date.getTime() + 1}...`);
     } else {
         lines.push("*No entries found matching the criteria.*");
         prevButton.setCustomId(`${buttonIdPrefix}:prev`).setDisabled(true);
@@ -397,6 +463,12 @@ export default {
                 required: true
             },
             {
+                name: 'api',
+                description: 'API to show the history from. Defaults to both where possible.',
+                type: 3, // string
+                choices: TRAIN_DATA_APIS.map(api => ({ name: API_NAMES[api], value: api }))
+            },
+            {
                 name: 'start-date',
                 description: 'Start date to show history from, in YYYY-MM-DD format. Defaults to today/yesterday if time is set.',
                 type: 3, // string
@@ -425,6 +497,16 @@ export default {
         if (trn.includes(':')) {
             await interaction.reply({
                 content: "TRN cannot contain a colon.",
+                flags: ["Ephemeral"]
+            });
+            return;
+        }
+
+        const property = interaction.options.get('property', true).value as string;
+        const api = interaction.options.get('api')?.value as TrainDataApi | undefined;
+        if (!api && !PROPERTY_CHOICES[property]?.combinable) {
+            await interaction.reply({
+                content: `Please choose an API to show the ${PROPERTY_CHOICES[property]?.displayName.toLowerCase()} history from.`,
                 flags: ["Ephemeral"]
             });
             return;
@@ -466,8 +548,8 @@ export default {
         const deferReply = interaction.deferReply();
         const page = await getPage(
             trn,
-            interaction.options.get('property', true).value as string,
-            from || to ?`${from?.getTime() || ''}...${to?.getTime() || ''}` : undefined,
+            api ? `${property}.${api}` : property,
+            from || to ? `${from?.getTime() || ''}...${to?.getTime() || ''}` : undefined,
         );
         await deferReply;
         await interaction.editReply(page);

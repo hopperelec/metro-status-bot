@@ -2,21 +2,21 @@ import {
     ActionRowBuilder, BaseMessageOptions, ButtonBuilder,
     ButtonStyle, EmbedBuilder,
 } from "discord.js";
-import {DueTime, PlatformNumber, TimesApiData, TrainTimetable} from "metro-api-client";
+import {DueTime, GeoApiData, HeartbeatTimes, PlatformNumber, TimesApiData, TrainTimetable} from "metro-api-client";
 import {proxy} from "../bot";
 import {MSBCommand} from "./index";
 import {apiConstants, getTodaysTimetable} from "../cache";
 import {DUE_TIMES_PAGE_ROWS, MONUMENT_STATION_CODES} from "../constants";
-import {dueInToString, renderPlatform, renderTimesAPILastEvent, renderTrainStatusesAPILastSeen} from "../rendering";
+import {API_EMOJIS, dueInToString, renderGeoApiLastSeen, renderParsedLocation, renderTimesApiLastEvent} from "../rendering";
 import {parseStationOption} from "./command-utils";
 
 const PROPS = [
-    "lastChecked",
+    "lastHeartbeat",
     "dueTimes.trn",
     "dueTimes.time",
     "dueTimes.status.timesAPI.lastEvent",
     "dueTimes.status.timesAPI.plannedDestinations",
-    "dueTimes.status.trainStatusesAPI",
+    "dueTimes.status.geoAPI",
 ];
 
 type BaseFilteredDueTime = {
@@ -27,10 +27,7 @@ type BaseFilteredDueTime = {
             lastEvent: TimesApiData['lastEvent'],
             plannedDestinations: TimesApiData['plannedDestinations']
         },
-        trainStatusesAPI?: {
-            lastSeen: string,
-            destination: string
-        }
+        geoAPI?: GeoApiData
     }
 }
 
@@ -40,15 +37,15 @@ function summarizeTrain(time: DueTime, train: BaseFilteredDueTime['status'], tra
         lines[0] += ` - **Scheduled time:** ${time.actualScheduledTime.toLocaleTimeString('en-GB')}`;
     }
 
-    let destination = `**Destination:** ⌛ ${train.timesAPI.plannedDestinations[0]!.name}`;
-    if (train.trainStatusesAPI) {
-        destination += ` 📍 ${train.trainStatusesAPI.destination}`;
+    let destination = `**Destination:** ${API_EMOJIS.TIMES} ${train.timesAPI.plannedDestinations[0]!.name}`;
+    if (train.geoAPI) {
+        destination += ` ${API_EMOJIS.GEO} ${train.geoAPI.destination}`;
     }
     lines.push(destination);
 
-    lines.push(`**⌛ Last seen:** ${renderTimesAPILastEvent(train.timesAPI.lastEvent, trainTimetable)}`);
-    if (train.trainStatusesAPI) {
-        lines.push(`**📍 Last seen:** ${renderTrainStatusesAPILastSeen(train.trainStatusesAPI.lastSeen, trainTimetable)}`);
+    lines.push(`**${API_EMOJIS.TIMES} Last seen:** ${renderTimesApiLastEvent(train.timesAPI.lastEvent, trainTimetable)}`);
+    if (train.geoAPI) {
+        lines.push(`**${API_EMOJIS.GEO} Last seen:** ${renderGeoApiLastSeen(train.geoAPI.lastSeen, trainTimetable)}`);
     }
 
     return lines.join('\n');
@@ -91,10 +88,10 @@ async function getStationPage(stationCode: string, page = "first"): Promise<stri
             stationCode,
             { props: [...PROPS, "dueTimes.platform"] }
         ) as {
-            lastChecked: Date,
+            lastHeartbeat: HeartbeatTimes,
             dueTimes: typeof dueTimes
         };
-        embedBuilder.setFooter({ text: `Last checked: ${response.lastChecked.toLocaleTimeString('en-GB')}` });
+        embedBuilder.setFooter({ text: `Last checked: ${response.lastHeartbeat.startedAt.toLocaleTimeString('en-GB')}` });
         dueTimes = response.dueTimes;
     } catch (e) {
         return `An error occurred while fetching the due times: ${e}`;
@@ -122,21 +119,21 @@ async function getStationPage(stationCode: string, page = "first"): Promise<stri
     };
 }
 
-async function getPlatformPage(stationCode: string, platform: PlatformNumber, page = "first"): Promise<string | BaseMessageOptions> {
+async function getPlatformPage(stationCode: string, platformNumber: PlatformNumber, page = "first"): Promise<string | BaseMessageOptions> {
     const embedBuilder = new EmbedBuilder();
     let dueTimes: (BaseFilteredDueTime & { platform: PlatformNumber })[];
     try {
         if (MONUMENT_STATION_CODES.includes(stationCode)) {
-            stationCode = platform === 1 || platform === 2 ? "MTS" : "MTW";
+            stationCode = platformNumber === 1 || platformNumber === 2 ? "MTS" : "MTW";
         }
         const response = await proxy.getPlatformDueTimes(
-            `${stationCode};${platform}`,
+            `${stationCode};${platformNumber}`,
             { props: PROPS }
         ) as {
-            lastChecked: Date,
+            lastHeartbeat: HeartbeatTimes,
             dueTimes: typeof dueTimes
         };
-        embedBuilder.setFooter({ text: `Last checked: ${response.lastChecked.toLocaleTimeString('en-GB')}` });
+        embedBuilder.setFooter({ text: `Last checked: ${response.lastHeartbeat.startedAt.toLocaleTimeString('en-GB')}` });
         dueTimes = response.dueTimes;
     } catch (e) {
         return `An error occurred while fetching the due times: ${e}`;
@@ -146,7 +143,7 @@ async function getPlatformPage(stationCode: string, platform: PlatformNumber, pa
     if (page === "first") pageNum = 1;
     else if (page === "last") pageNum = numPages;
     else pageNum = Math.min(+page, numPages);
-    embedBuilder.setTitle(`Next trains due at ${renderPlatform(stationCode, platform)} - Page ${pageNum}/${numPages}`);
+    embedBuilder.setTitle(`Next trains due at ${renderParsedLocation({stationCode, platformNumber})} - Page ${pageNum}/${numPages}`);
     if (dueTimes.length === 0) {
         embedBuilder.setDescription("*No trains due at this platform.*");
     } else {
@@ -163,7 +160,7 @@ async function getPlatformPage(stationCode: string, platform: PlatformNumber, pa
     }
     return {
         embeds: [embedBuilder],
-        components: createButtons(`${stationCode}:${platform}`, pageNum, pageNum >= numPages),
+        components: createButtons(`${stationCode}:${platformNumber}`, pageNum, pageNum >= numPages),
     };
 }
 
@@ -209,7 +206,7 @@ export default {
         .filter((code) =>
             code !== "MTE" && // Alias for MTW
             code !== "MTN" && // Alias for MTS
-            code !== "PJC"    // Not shown in times API
+            code !== "PJC"    // Not shown in Times API
         ).map(code => `${code} - ${apiConstants.LOCATION_ABBREVIATIONS[code]}`),
 
     button: async (interaction, rest) => {

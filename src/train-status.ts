@@ -1,4 +1,4 @@
-import {GeoApiData, HistoricTimesApiData, TimesApiData} from "metro-api-client";
+import {GeoApiData, HistoricTimesApiData, TimesApiData} from "tnw-metro-api-client";
 
 /** A train's status, either current or historic */
 export interface TrainStatus {

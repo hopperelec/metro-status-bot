@@ -9,7 +9,7 @@ import {
     TrainDataApi,
     TrainHistoryEntry,
     TrainTimetable
-} from "metro-api-client";
+} from "tnw-metro-api-client";
 import {
     API_EMOJIS,
     renderGeoApiLastSeen,

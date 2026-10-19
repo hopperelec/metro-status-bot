@@ -1,7 +1,7 @@
 import "./timezone"; // Must be imported first
 import {Client, Events, GatewayIntentBits, MessageCreateOptions, MessagePayload, TextChannel} from "discord.js";
 import {handleInteraction, registerCommands} from "./commands";
-import {MetroApiClient} from "metro-api-client";
+import {MetroApiClient} from "tnw-metro-api-client";
 import {startMonitoring} from "./monitoring";
 
 const MAIN_CHANNEL_ID = process.env.MAIN_CHANNEL_ID;

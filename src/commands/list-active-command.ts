@@ -1,6 +1,6 @@
 import {EmbedBuilder} from "discord.js";
 import {proxy} from "../bot";
-import {FullTrainsResponse} from "metro-api-client";
+import {FullTrainsResponse} from "tnw-metro-api-client";
 import {
     calculateDelayFromTimesApi,
     calculateDelayFromGeoApi,

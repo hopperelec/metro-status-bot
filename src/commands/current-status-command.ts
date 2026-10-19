@@ -1,5 +1,5 @@
 import {lastHistoryEntries, getTodaysTimetable, setLastHeartbeat} from "../cache";
-import {FullTrainResponse} from "metro-api-client";
+import {FullTrainResponse} from "tnw-metro-api-client";
 import {proxy} from "../bot";
 import {getExpectedTrainState, secondsSinceMidnight} from "../timetable";
 import {renderExpectedTrainState, trainEmbed} from "../rendering";

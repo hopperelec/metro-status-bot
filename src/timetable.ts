@@ -7,7 +7,7 @@ import {
     TimesApiData,
     TrainTimetable,
     TrainTimetableEntry,
-} from "metro-api-client";
+} from "tnw-metro-api-client";
 import {MONUMENT_STATION_CODES} from "./constants";
 
 export function whenIsNextDay(date = new Date()): Date {

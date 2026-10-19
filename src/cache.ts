@@ -1,6 +1,6 @@
 import {
     ApiConstants, compareTimes as _compareTimes, DayTimetable, FullTrainsResponse, MetroApiClient, PlatformNumber,
-} from "metro-api-client";
+} from "tnw-metro-api-client";
 import {whenIsNextDay} from "./timetable";
 import {proxy, updateActivity} from "./bot";
 import {DatedTrainStatus} from "./train-status";

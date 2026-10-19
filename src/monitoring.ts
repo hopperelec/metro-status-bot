@@ -45,7 +45,7 @@ import {
     PlatformNumber,
     SubscriptionRequest,
     TimesApiData,
-} from "metro-api-client";
+} from "tnw-metro-api-client";
 import {
     getExpectedTrainState,
     isNightHours,

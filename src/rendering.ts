@@ -4,7 +4,7 @@ import {EmbedBuilder} from "discord.js";
 import {
     ApiType, ExpectedTrainState, GeoApiData, GeoApiEventType, HeartbeatError, HeartbeatWarning, ParsedPlatform,
     TimesApiData, TrainTimetable
-} from "metro-api-client";
+} from "tnw-metro-api-client";
 import {
     calculateDelayFromTimesApi,
     calculateDelayFromGeoApi,

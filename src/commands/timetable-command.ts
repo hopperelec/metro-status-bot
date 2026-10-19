@@ -1,5 +1,5 @@
 import {apiConstants, compareTimes, getTodaysTimetable} from "../cache";
-import {DayTimetable, TrainTimetableEntry} from "metro-api-client";
+import {DayTimetable, TrainTimetableEntry} from "tnw-metro-api-client";
 import {proxy} from "../bot";
 import {entryEndTime, entryStartTime, locationsMatch, parseLocationCode} from "../timetable";
 import {MSBCommand} from "./index";

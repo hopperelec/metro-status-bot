@@ -2,7 +2,7 @@ import {
     ActionRowBuilder, BaseMessageOptions, ButtonBuilder,
     ButtonStyle, EmbedBuilder,
 } from "discord.js";
-import {DueTime, GeoApiData, HeartbeatTimes, PlatformNumber, TimesApiData, TrainTimetable} from "metro-api-client";
+import {DueTime, GeoApiData, HeartbeatTimes, PlatformNumber, TimesApiData, TrainTimetable} from "tnw-metro-api-client";
 import {proxy} from "../bot";
 import {MSBCommand} from "./index";
 import {apiConstants, getTodaysTimetable} from "../cache";
